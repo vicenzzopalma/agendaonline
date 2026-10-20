@@ -7,7 +7,27 @@ export const addDays = (day: string, amount: number) => { const d = parseDay(day
 export const monday = (day: string) => addDays(day, -((parseDay(day).getUTCDay() + 6) % 7));
 export const minutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
 export const toTime = (value: number) => `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
-export const bookingLocation = (event: Pick<Booking, "roomId" | "kind" | "link">, rooms: Room[]) => rooms.find(room => room.id === event.roomId)?.name || (event.kind === "online" ? "Online" : "Sem sala de reunião");
+export const MEETING_LINK_ERROR = "Cole um link válido do Google Meet (https://meet.google.com/...) ou de outra reunião online com https://.";
+export function normalizeMeetingLink(value: string): string {
+  let raw = value.trim();
+  if (!raw) return "";
+  if (/^meet\.google\.com(?:[/?#]|$)/i.test(raw)) raw = `https://${raw}`;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" || url.username || url.password || /\s/.test(raw)) throw new Error();
+    if (url.hostname === "meet.google.com" && url.pathname === "/") throw new Error();
+    return url.href;
+  } catch { throw new Error(MEETING_LINK_ERROR); }
+}
+export function meetingLinkInfo(value: string): { url: string; isMeet: boolean } | null {
+  try {
+    const url = normalizeMeetingLink(value);
+    if (!url) return null;
+    const parsed = new URL(url);
+    return { url, isMeet: parsed.hostname === "meet.google.com" && !parsed.port };
+  } catch { return null; }
+}
+export const bookingLocation = (event: Pick<Booking, "roomId" | "kind" | "link">, rooms: Room[]) => rooms.find(room => room.id === event.roomId)?.name || (meetingLinkInfo(event.link || "")?.isMeet ? "Google Meet" : event.link || event.kind === "online" ? "Online" : "Sem sala de reunião");
 export const overlaps = (a: Pick<Booking, "date" | "start" | "end" | "roomId">, b: Pick<Booking, "date" | "start" | "end" | "roomId">) => !!a.roomId && a.roomId === b.roomId && a.date === b.date && a.start < b.end && a.end > b.start;
 export function placeEvents(events: Booking[]) {
   const sorted = [...events].sort((a, b) => a.start.localeCompare(b.start) || b.end.localeCompare(a.end));

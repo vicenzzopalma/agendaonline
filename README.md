@@ -11,6 +11,7 @@ Agenda compartilhada para organizar compromissos, atividades e reuniões da Real
 - A agenda atualiza a cada 30 segundos e ao voltar para a janela. Os horários seguem São Paulo (GMT−3).
 - Salas com reservas atuais ou futuras não podem ser arquivadas. O histórico das salas arquivadas é mantido.
 - Participantes são informações do agendamento; o site não envia e-mails nem sincroniza automaticamente com outras agendas. A exportação `.ics` permite importar encontros no Outlook ou Google Agenda.
+- O formulário tem uma seção **Google Meet** para colar o link da reunião. O atalho **Abrir Google Meet** abre o serviço em outra aba para criar a chamada e copiar seu link. O link informado fica salvo no compromisso, com botões **Entrar no Meet** e **Copiar link**. Links do Meet sem `https://` são completados; outros serviços com links HTTPS continuam aceitos. A criação da chamada acontece na conta do Google, e a agenda guarda o endereço informado.
 
 ## Primeira utilização
 

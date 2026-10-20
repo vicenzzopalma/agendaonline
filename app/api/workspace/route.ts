@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { workspaceSetupStatements } from "../../../lib/workspace-setup";
+import { MEETING_LINK_ERROR, normalizeMeetingLink } from "../../../lib/calendar";
 
 export const dynamic = "force-dynamic";
 const colors = ["green", "blue", "purple", "orange"];
@@ -78,11 +79,9 @@ export async function POST(request: Request) {
     const roomId = clean(body.roomId, 100) || null;
     if (roomId && !await db.prepare("SELECT id FROM rooms WHERE id=? AND active=1").bind(roomId).first()) return json({ error: "Selecione uma sala disponível." }, 400);
     const kind = ["appointment", "meeting", "focus", "client", "online"].includes(String(body.kind)) ? body.kind : "appointment";
-    const link = clean(body.link, 500);
-    if (link) {
-      try { if (new URL(link).protocol !== "https:") throw new Error(); }
-      catch { return json({ error: "Use um link de reunião que comece com https://." }, 400); }
-    }
+    let link: string;
+    try { link = normalizeMeetingLink(clean(body.link, 500)); }
+    catch { return json({ error: MEETING_LINK_ERROR }, 400); }
     const id = clean(body.id, 100) || crypto.randomUUID();
     const values = [title, date, start, end, roomId, kind, clean(body.description, 2000), clean(body.participants, 1000), link];
     if (body.id) {
