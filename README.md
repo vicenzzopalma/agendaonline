@@ -1,0 +1,48 @@
+# Agenda Realess
+
+Calendário compartilhado para organizar reuniões e reservar os espaços da Realess. Interface em português, com visões de semana, mês e lista, busca, filtros por sala e tipo, gerenciamento de salas e exportação `.ics`.
+
+## Como funciona
+
+- Os registros são persistidos no Cloudflare D1. O navegador guarda apenas o estado da interface.
+- A identidade vem da autenticação do Sites. Cada pessoa pode editar e cancelar as próprias reservas; os encontros são visíveis para quem tiver acesso ao site.
+- O site começa privado para o criador. O acesso da equipe deve ser configurado nas permissões do Sites antes do uso coletivo.
+- A disponibilidade é verificada no servidor. Triggers do banco impedem conflitos, inclusive em solicitações simultâneas. Horários consecutivos são permitidos.
+- A agenda atualiza a cada 30 segundos e ao voltar para a janela. Os horários seguem São Paulo (GMT−3).
+- Salas com reservas atuais ou futuras não podem ser arquivadas. O histórico das salas arquivadas é mantido.
+- Participantes são informações do agendamento; o site não envia e-mails nem sincroniza automaticamente com outras agendas. A exportação `.ics` permite importar encontros no Outlook ou Google Agenda.
+
+## Primeira utilização
+
+As quatro salas iniciais são exemplos editáveis. A agenda ilustrativa é gerada somente na interface e identificada como exemplo. Clique em **Começar minha agenda** ou crie a primeira reserva para sair da demonstração. Em **Salas de reunião**, edite os nomes, capacidades, localização e recursos para refletir os espaços reais da empresa.
+
+## Desenvolvimento
+
+Requer Node.js 22.13 ou superior. O projeto usa React, Vinext e o starter de integração do Sites.
+
+```powershell
+npm ci
+npm run build
+node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_plain_cassandra_nova.sql
+npm run dev
+```
+
+Aplique a migração apenas uma vez em cada banco local. A prévia abre em `http://127.0.0.1:5173`. O login local é simulado pelo starter; a hospedagem usa a autenticação real do Sites. Os bancos locais e de produção são independentes.
+
+```powershell
+node node_modules/typescript/bin/tsc --noEmit
+node --experimental-strip-types --test tests/calendar.test.mjs
+```
+
+Os testes verificam limites de datas, conflitos, disposição de encontros sobrepostos, exportação de calendários e as restrições reais do banco SQLite.
+
+## Arquivos principais
+
+- `app/workspace.tsx`: interface e interações.
+- `app/globals.css`: estilos e cores da identidade visual.
+- `app/api/workspace/route.ts`: leitura, validação, autorização e alterações.
+- `lib/calendar.ts`: datas, conflitos, disposição dos eventos e exportação.
+- `db/schema.ts` e `drizzle/`: esquema e migrações.
+- `.openai/hosting.json`: identidade do site e vínculo do banco.
+
+Use o fluxo de publicação do plugin Sites para sincronizar o código, construir e publicar a versão. A migração de produção é aplicada pela hospedagem. Credenciais não pertencem ao repositório.
