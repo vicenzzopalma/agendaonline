@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
-import { addDays, monday, overlaps, placeEvents, createICS } from '../lib/calendar.ts';
+import { addDays, monday, overlaps, placeEvents, createICS, bookingLocation } from '../lib/calendar.ts';
 
 test('calendar dates respect São Paulo and week boundaries', () => {
   assert.equal(monday('2026-10-20'), '2026-10-19');
@@ -45,4 +45,10 @@ test('database enforces conflicts on insert and update, including inactive rooms
   assert.throws(()=>db.prepare("UPDATE bookings SET start='09:30' WHERE id='4'").run(),/ROOM_CONFLICT/);
   assert.equal(db.prepare("SELECT start FROM bookings WHERE id='4'").get().start,'10:00');
   db.close();
+});
+test('general appointments without a room are not labeled as online meetings', () => {
+  const event={id:'appointment',title:'Organizar prioridades',date:'2030-01-15',start:'09:00',end:'10:00',roomId:null,kind:'appointment',link:'',description:''};
+  assert.equal(bookingLocation(event,[]),'Sem sala de reunião');
+  assert.equal(bookingLocation({...event,kind:'online'},[]),'Online');
+  assert.ok(createICS([event],[]).includes('LOCATION:Sem sala de reunião'));
 });

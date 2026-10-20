@@ -1,6 +1,6 @@
 # Agenda Realess
 
-Calendário compartilhado para organizar reuniões e reservar os espaços da Realess. Interface em português, com visões de semana, mês e lista, busca, filtros por sala e tipo, gerenciamento de salas e exportação `.ics`.
+Agenda compartilhada para organizar compromissos, atividades e reuniões da Realess. A reserva de sala é opcional. Interface em português, com visões de semana, mês e lista, busca, filtros por sala e tipo, gerenciamento de salas e exportação `.ics`.
 
 ## Como funciona
 
@@ -14,7 +14,9 @@ Calendário compartilhado para organizar reuniões e reservar os espaços da Rea
 
 ## Primeira utilização
 
-As quatro salas iniciais são exemplos editáveis. A agenda ilustrativa é gerada somente na interface e identificada como exemplo. Clique em **Começar minha agenda** ou crie a primeira reserva para sair da demonstração. Em **Salas de reunião**, edite os nomes, capacidades, localização e recursos para refletir os espaços reais da empresa.
+Use **Novo compromisso** para organizar a rotina. Por padrão, o compromisso não reserva uma sala. Para reuniões presenciais, selecione **Sala de reunião 1** ou **Sala de reunião 2**, ou use o botão **Reservar sala** na área de salas. Novos espaços podem ser cadastrados a qualquer momento. Capacidade, localização e recursos são opcionais e podem ser preenchidos quando conhecidos.
+
+A agenda começa com os registros reais, sem compromissos fictícios. A atualização das salas iniciais preserva os IDs usados pelas reservas existentes, as salas personalizadas e as salas que já têm agendamentos. Os dados iniciais são configurados por `lib/workspace-setup.ts`, fora das migrações de esquema.
 
 ## Desenvolvimento
 

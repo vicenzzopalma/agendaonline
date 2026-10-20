@@ -7,6 +7,7 @@ export const addDays = (day: string, amount: number) => { const d = parseDay(day
 export const monday = (day: string) => addDays(day, -((parseDay(day).getUTCDay() + 6) % 7));
 export const minutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
 export const toTime = (value: number) => `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
+export const bookingLocation = (event: Pick<Booking, "roomId" | "kind" | "link">, rooms: Room[]) => rooms.find(room => room.id === event.roomId)?.name || (event.kind === "online" ? "Online" : "Sem sala de reunião");
 export const overlaps = (a: Pick<Booking, "date" | "start" | "end" | "roomId">, b: Pick<Booking, "date" | "start" | "end" | "roomId">) => !!a.roomId && a.roomId === b.roomId && a.date === b.date && a.start < b.end && a.end > b.start;
 export function placeEvents(events: Booking[]) {
   const sorted = [...events].sort((a, b) => a.start.localeCompare(b.start) || b.end.localeCompare(a.end));
@@ -32,7 +33,7 @@ export function createICS(events: Booking[], rooms: Room[], now = new Date()) {
   const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n").replace(/;/g, "\\;").replace(/,/g, "\\,");
   const stamp = (date: Date) => date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
   const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Realess//Agenda//PT-BR", "CALSCALE:GREGORIAN", "METHOD:PUBLISH"];
-  for (const event of events) lines.push("BEGIN:VEVENT", `UID:${event.id}@agenda.realess`, `DTSTAMP:${stamp(now)}`, `DTSTART:${stamp(new Date(`${event.date}T${event.start}:00-03:00`))}`, `DTEND:${stamp(new Date(`${event.date}T${event.end}:00-03:00`))}`, `SUMMARY:${esc(event.title)}`, `DESCRIPTION:${esc([event.description, event.link].filter(Boolean).join("\n"))}`, `LOCATION:${esc(rooms.find(r => r.id === event.roomId)?.name || "Online / sem sala")}`, "END:VEVENT");
+  for (const event of events) lines.push("BEGIN:VEVENT", `UID:${event.id}@agenda.realess`, `DTSTAMP:${stamp(now)}`, `DTSTART:${stamp(new Date(`${event.date}T${event.start}:00-03:00`))}`, `DTEND:${stamp(new Date(`${event.date}T${event.end}:00-03:00`))}`, `SUMMARY:${esc(event.title)}`, `DESCRIPTION:${esc([event.description, event.link].filter(Boolean).join("\n"))}`, `LOCATION:${esc(bookingLocation(event,rooms))}`, "END:VEVENT");
   lines.push("END:VCALENDAR");
   const encoder = new TextEncoder();
   return lines.flatMap(line => {

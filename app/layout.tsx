@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 export const metadata: Metadata = {
-  title: "Realess · Agenda e salas",
-  description: "Um espaço para organizar a agenda da Realess, reservar salas e conectar a equipe.",
+  title: "Agenda Realess",
+  description: "Organize o dia, acompanhe compromissos e planeje a semana na agenda da Realess. Reserve uma sala de reunião quando precisar.",
   icons: { icon: "/favicon.svg" },
 };
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { getChatGPTUser } from "../../chatgpt-auth";
+import { workspaceSetupStatements } from "../../../lib/workspace-setup";
 
 export const dynamic = "force-dynamic";
 const colors = ["green", "blue", "purple", "orange"];
@@ -8,15 +9,7 @@ const clean = (value: unknown, length = 500) => typeof value === "string" ? valu
 
 async function initialize() {
   const db = env.DB!;
-  await db.batch([
-    ...[
-      ["horizonte", "Sala Horizonte", 8, "1º andar", "TV, Videoconferência, Quadro branco", "green"],
-      ["conexao", "Sala Conexão", 6, "1º andar", "TV, Videoconferência", "blue"],
-      ["inspira", "Sala Inspira", 4, "2º andar", "Quadro branco, Ar-condicionado", "purple"],
-      ["auditorio", "Auditório", 20, "Térreo", "Projetor, Microfone, Ar-condicionado", "orange"],
-    ].map(values => db.prepare("INSERT OR IGNORE INTO rooms (id,name,capacity,location,equipment,color) SELECT ?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM settings WHERE id='workspace')").bind(...values)),
-    db.prepare("INSERT OR IGNORE INTO settings (id,started) VALUES ('workspace',0)"),
-  ]);
+  await db.batch(workspaceSetupStatements.map(statement => db.prepare(statement)));
 }
 export async function GET() {
   try {
@@ -50,8 +43,8 @@ export async function POST(request: Request) {
     }
     if (body.action === "saveRoom") {
       const name = clean(body.name, 70);
-      const capacity = Number(body.capacity);
-      if (!name || !Number.isInteger(capacity) || capacity < 1 || capacity > 500) return json({ error: "Informe um nome e uma capacidade entre 1 e 500 pessoas." }, 400);
+      const capacity = Number(body.capacity ?? 0);
+      if (!name || !Number.isInteger(capacity) || capacity < 0 || capacity > 500) return json({ error: "Informe o nome da sala. A capacidade é opcional e deve ser de até 500 pessoas." }, 400);
       const id = clean(body.id, 100) || crypto.randomUUID();
       const duplicate = await db.prepare("SELECT id FROM rooms WHERE lower(name)=lower(?) AND active=1 AND id<>?").bind(name, id).first();
       if (duplicate) return json({ error: "Já existe uma sala com esse nome." }, 409);
@@ -84,7 +77,7 @@ export async function POST(request: Request) {
     if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0,10) !== date || !/^([01]\d|2[0-3]):[0-5]\d$/.test(start) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(end) || start >= end) return json({ error: "Confira o título, a data e os horários. O término deve ser depois do início." }, 400);
     const roomId = clean(body.roomId, 100) || null;
     if (roomId && !await db.prepare("SELECT id FROM rooms WHERE id=? AND active=1").bind(roomId).first()) return json({ error: "Selecione uma sala disponível." }, 400);
-    const kind = ["meeting", "focus", "client", "online"].includes(String(body.kind)) ? body.kind : "meeting";
+    const kind = ["appointment", "meeting", "focus", "client", "online"].includes(String(body.kind)) ? body.kind : "appointment";
     const link = clean(body.link, 500);
     if (link) {
       try { if (new URL(link).protocol !== "https:") throw new Error(); }
