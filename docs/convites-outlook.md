@@ -1,5 +1,7 @@
 # Convites de reunião — Agenda Realess
 
+O acesso agora é livre pelo link, sem conta da OpenAI. Veja [acesso e permissões por navegador](acesso-livre.md). O organizador informa seu nome e e-mail no formulário do compromisso.
+
 ## Uso
 
 1. Crie ou edite um compromisso. Informe os e-mails em **Participantes**, separados por vírgula, ponto e vírgula ou Enter. Colagens com várias linhas também funcionam. Cada etiqueta permite editar ou remover o endereço; duplicados são eliminados.

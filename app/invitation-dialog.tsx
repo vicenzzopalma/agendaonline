@@ -27,6 +27,11 @@ export function InvitationDialog({
   removedOnly?: boolean;
   onPrepareRemoved?: () => void;
 }) {
+  organizer = {
+    ...organizer,
+    name: event.ownerName,
+    email: event.organizerEmail || organizer.email,
+  };
   const [notice, setNotice] = useState("");
   const message = invitationMessage(event, rooms, removedOnly);
   const legacy = splitRecipients(event.participants).some(
@@ -153,7 +158,7 @@ export function InvitationDialog({
           <button
             type="button"
             className="button button-secondary"
-            disabled={!canPrepare}
+            disabled={!canPrepare || !validEmail(organizer.email)}
             onClick={download}
           >
             <Download size={17} />
@@ -180,8 +185,15 @@ export function InvitationDialog({
         <small>
           O e-mail contém o texto e o link da reunião. O arquivo .ics é baixado
           separadamente; para enviar também o convite de calendário, anexe-o no
-          Outlook. Use a conta {organizer.email} como organizador para manter as
-          atualizações do calendário.
+          Outlook.{" "}
+          {organizer.email ? (
+            <>
+              Use a conta {organizer.email} como organizador para manter as
+              atualizações do calendário.
+            </>
+          ) : (
+            "Para gerar o arquivo .ics, informe o e-mail do organizador ao editar o compromisso."
+          )}
         </small>
         <details className="invitation-preview" open>
           <summary>Conferir mensagem</summary>

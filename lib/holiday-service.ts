@@ -10,12 +10,15 @@ import {
   type HolidayYear,
 } from "./holidays";
 
-export function isCalendarAdmin(user: { email: string }) {
+export function isCalendarAdmin(user: { isAdmin?: boolean }) {
+  return user.isAdmin === true;
+}
+export function configuredCalendarAdmin(email: string) {
   return (env.AGENDA_ADMIN_EMAILS || "")
     .split(",")
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean)
-    .includes(user.email.toLowerCase());
+    .includes(email.toLowerCase());
 }
 export async function readCalendarPolicy(): Promise<CalendarPolicy> {
   const [settings, overrides] = await env.DB!.batch([

@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { getAgendaVisitor } from "../../../lib/agenda-visitor";
 import {
   isCalendarAdmin,
   readCalendarPolicy,
@@ -7,7 +7,7 @@ import {
 import { validDate, type CalendarPolicy } from "../../../lib/holidays";
 
 export async function POST(request: Request) {
-  const user = await getChatGPTUser();
+  const { user } = await getAgendaVisitor(request);
   if (!user || !isCalendarAdmin(user))
     return Response.json(
       { error: "Somente administradores podem alterar o calendário." },

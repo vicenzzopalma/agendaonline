@@ -95,6 +95,8 @@ type Draft = {
   description: string;
   participants: string;
   link: string;
+  organizerName: string;
+  organizerEmail: string;
 };
 type RoomDraft = {
   id?: string;
@@ -148,7 +150,6 @@ export default function Workspace() {
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [signIn, setSignIn] = useState(false);
   const [search, setSearch] = useState("");
   const [roomFilter, setRoomFilter] = useState<string[]>([]);
   const [kindFilter, setKindFilter] = useState("");
@@ -200,16 +201,13 @@ export default function Workspace() {
         );
         const body = (await response.json()) as Data & {
           error?: string;
-          signIn?: boolean;
         };
         if (sequence !== requestSequence.current) return;
         if (!response.ok) {
-          setSignIn(!!body.signIn);
           throw new Error(body.error || "Não foi possível carregar a agenda.");
         }
         setData(body);
         setLoadError("");
-        setSignIn(false);
       } catch (error) {
         if (!silent && sequence === requestSequence.current)
           setLoadError(
@@ -350,6 +348,9 @@ export default function Workspace() {
       description: "",
       participants: "",
       link: "",
+      organizerName:
+        data?.user.name === "Visitante" ? "" : data?.user.name || "",
+      organizerEmail: data?.user.email || "",
     });
   }
   async function mutate(payload: Record<string, unknown>, message: string) {
@@ -402,6 +403,8 @@ export default function Workspace() {
       description: event.demo ? "" : event.description,
       participants: event.demo ? "" : event.participants,
       link: event.link,
+      organizerName: event.demo ? data?.user.name || "" : event.ownerName,
+      organizerEmail: event.organizerEmail || data?.user.email || "",
     });
   }
   async function copyMeetingLink(url: string) {
@@ -708,7 +711,7 @@ export default function Workspace() {
             </button>
             <div
               className="avatar user-avatar"
-              title={data?.user.name || "Sua conta"}
+              title={data?.user.name || "Seu navegador"}
             >
               {data ? initials(data.user.name) : "R"}
             </div>
@@ -783,7 +786,7 @@ export default function Workspace() {
                 data?.stats?.mine ??
                 weekEvents.filter((e) => e.ownerId === data?.user.id).length
               }
-              note="Na sua agenda desta semana"
+              note="Criados neste navegador"
               color="purple"
             />
           </div>
@@ -796,29 +799,15 @@ export default function Workspace() {
           ) : loadError ? (
             <div className="loading-panel error-panel">
               <CalendarDays size={34} />
-              <h2>
-                {signIn
-                  ? "Bem-vindo à agenda da Realess"
-                  : "Não foi possível abrir a agenda"}
-              </h2>
+              <h2>Não foi possível abrir a agenda</h2>
               <p>{loadError}</p>
-              {signIn ? (
-                <a
-                  className="button button-primary"
-                  href="/signin-with-chatgpt?return_to=%2F"
-                  target="_top"
-                >
-                  Entrar para acessar <ArrowRight size={16} />
-                </a>
-              ) : (
-                <button
-                  className="button button-primary"
-                  onClick={() => void refresh()}
-                >
-                  <RefreshCw size={16} />
-                  Tentar novamente
-                </button>
-              )}
+              <button
+                className="button button-primary"
+                onClick={() => void refresh()}
+              >
+                <RefreshCw size={16} />
+                Tentar novamente
+              </button>
             </div>
           ) : (
             <>
@@ -1656,6 +1645,39 @@ export default function Workspace() {
           }}
         >
           <form onSubmit={saveBooking} className="booking-form">
+            <div className="form-row">
+              <label>
+                Nome do organizador <span>*</span>
+                <input
+                  required
+                  minLength={2}
+                  maxLength={80}
+                  autoComplete="name"
+                  value={draft.organizerName}
+                  placeholder="Seu nome"
+                  onChange={(e) =>
+                    setDraft({ ...draft, organizerName: e.target.value })
+                  }
+                />
+              </label>
+              <label>
+                E-mail do organizador <span className="optional">opcional</span>
+                <input
+                  type="email"
+                  maxLength={254}
+                  autoComplete="email"
+                  value={draft.organizerEmail}
+                  placeholder="seu.nome@empresa.com.br"
+                  onChange={(e) =>
+                    setDraft({ ...draft, organizerEmail: e.target.value })
+                  }
+                />
+                <small>
+                  Usado para gerar o convite .ics no Outlook. Não é necessário
+                  criar uma conta.
+                </small>
+              </label>
+            </div>
             <label>
               Título do compromisso <span>*</span>
               <input
@@ -1787,6 +1809,12 @@ export default function Workspace() {
               <Clock3 size={14} />
               Todos os horários seguem o fuso de São Paulo (GMT−3).
             </div>
+            <p className="form-footnote">
+              A edição e a lista de participantes ficam vinculadas a este
+              navegador. Ao trocar de navegador ou limpar os cookies, você
+              poderá consultar os compromissos, mas perderá a permissão de
+              editá-los.
+            </p>
             <div className="modal-actions">
               <button
                 type="button"
@@ -2088,10 +2116,11 @@ export default function Workspace() {
                 <h3>Sua equipe, na mesma página</h3>
                 <p>
                   Os compromissos ficam salvos e a agenda atualiza a cada 30
-                  segundos. Cada pessoa pode editar e cancelar seus próprios
-                  compromissos. O acesso inicial deste site é privado para o
-                  criador; o compartilhamento com a equipe é configurado no
-                  Sites.
+                  segundos. Qualquer pessoa com o link pode consultar a agenda e
+                  criar compromissos, sem login. A edição, o cancelamento e a
+                  lista de participantes ficam vinculados ao navegador que criou
+                  o compromisso. Limpar os cookies ou trocar de navegador remove
+                  essa permissão de edição.
                 </p>
               </section>
             </div>
@@ -2101,8 +2130,10 @@ export default function Workspace() {
                 <h3>Leve a agenda com você</h3>
                 <p>
                   Exporte os encontros em formato .ics e importe no Outlook ou
-                  Google Agenda. Participantes são registrados aqui; o site não
-                  envia convites por e-mail.
+                  Google Agenda. Ao salvar uma reunião com participantes, você
+                  pode preparar o e-mail com o link do Meet ou baixar o convite
+                  .ics. Confira os dados e confirme o envio no Outlook ou no seu
+                  aplicativo padrão de e-mail.
                 </p>
               </section>
             </div>

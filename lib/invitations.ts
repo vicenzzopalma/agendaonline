@@ -134,7 +134,7 @@ export function createInvitationICS(
 ) {
   if (!validEmail(organizer.email))
     throw new Error(
-      "Sua conta precisa ter um e-mail válido para gerar o convite.",
+      "Informe um e-mail válido do organizador no compromisso para gerar o convite.",
     );
   const recipients = invitationRecipients(event.participants);
   if (!recipients.length)

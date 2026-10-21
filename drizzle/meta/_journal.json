@@ -15,6 +15,13 @@
       "when": 1792584546192,
       "tag": "0001_whole_terror",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792588393311,
+      "tag": "0002_cheerful_sharon_carter",
+      "breakpoints": true
     }
   ]
 }

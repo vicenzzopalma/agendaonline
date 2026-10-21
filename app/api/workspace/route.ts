@@ -1,5 +1,8 @@
 import { env } from "cloudflare:workers";
-import { getChatGPTUser } from "../../chatgpt-auth";
+import {
+  getAgendaVisitor,
+  type AgendaVisitor,
+} from "../../../lib/agenda-visitor";
 import { workspaceSetupStatements } from "../../../lib/workspace-setup";
 import {
   addDays,
@@ -26,20 +29,25 @@ import {
 } from "../../../lib/recipients";
 
 export const dynamic = "force-dynamic";
-const json = (data: unknown, status = 200) =>
-  Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
+const responseJSON = (data: unknown, status = 200, cookie?: string) =>
+  Response.json(data, {
+    status,
+    headers: {
+      "Cache-Control": "no-store",
+      ...(cookie ? { "Set-Cookie": cookie } : {}),
+    },
+  });
+const json = responseJSON;
 const clean = (value: unknown, length = 500) =>
   typeof value === "string" ? value.trim().slice(0, length) : "";
 const fields =
-  "id,title,date,start,end,room_id AS roomId,kind,description,participants,link,owner_id AS ownerId,owner_name AS ownerName,created_at AS createdAt,updated_at AS updatedAt,cancelled_at AS cancelledAt,status,version";
+  "id,title,date,start,end,room_id AS roomId,kind,description,participants,link,owner_id AS ownerId,owner_name AS ownerName,organizer_email AS organizerEmail,created_at AS createdAt,updated_at AS updatedAt,cancelled_at AS cancelledAt,status,version";
 async function initialize() {
   await env.DB!.batch(
     workspaceSetupStatements.map((statement) => env.DB!.prepare(statement)),
   );
 }
-const userInfo = (
-  user: NonNullable<Awaited<ReturnType<typeof getChatGPTUser>>>,
-) => ({
+const userInfo = (user: AgendaVisitor) => ({
   id: user.userId,
   name: user.displayName,
   email: user.email,
@@ -48,14 +56,12 @@ const userInfo = (
 
 export async function GET(request: Request) {
   try {
-    const user = await getChatGPTUser();
-    if (!user)
-      return json(
-        { error: "Entre na sua conta para acessar a agenda.", signIn: true },
-        401,
-      );
     if (!env.DB) throw new Error("Database unavailable");
     await initialize();
+    const visitor = await getAgendaVisitor(request, true),
+      user = visitor.user!;
+    const json = (data: unknown, status = 200) =>
+      responseJSON(data, status, visitor.cookie);
     const db = env.DB,
       params = new URL(request.url).searchParams;
     const rooms = await db.prepare("SELECT * FROM rooms ORDER BY rowid").all();
@@ -241,11 +247,14 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const user = await getChatGPTUser();
+    const { user } = await getAgendaVisitor(request);
     if (!user)
       return json(
-        { error: "Sua sessão expirou. Entre novamente.", signIn: true },
-        401,
+        {
+          error:
+            "Atualize a página para continuar. Permita os cookies deste site para salvar seus compromissos.",
+        },
+        428,
       );
     const origin = request.headers.get("origin");
     if (origin && origin !== new URL(request.url).origin)
@@ -478,11 +487,24 @@ export async function POST(request: Request) {
     } catch (error) {
       return json({ error: (error as Error).message }, 400);
     }
+    const organizerName = clean(body.organizerName, 80) || user.displayName;
+    const organizerEmail =
+      body.organizerEmail === undefined
+        ? existing?.organizerEmail || user.email
+        : clean(body.organizerEmail, 254).toLowerCase();
+    if (organizerName.length < 2 || organizerName === "Visitante")
+      return json(
+        { error: "Informe o nome do organizador do compromisso." },
+        400,
+      );
+    if (organizerEmail && !validEmail(organizerEmail))
+      return json(
+        { error: "Informe um e-mail válido para o organizador." },
+        400,
+      );
     const description = clean(body.description, 2000),
       timestamp = Date.now(),
-      searchText = normalizeSearch(
-        `${title} ${user.displayName} ${participants}`,
-      ),
+      searchText = normalizeSearch(`${title} ${organizerName} ${participants}`),
       values = [
         title,
         date,
@@ -500,9 +522,16 @@ export async function POST(request: Request) {
     if (existing) {
       const result = await db
         .prepare(
-          "UPDATE bookings SET title=?,date=?,start=?,end=?,room_id=?,kind=?,description=?,participants=?,link=?,updated_at=?,last_actor_id=?,search_text=?,version=version+1 WHERE id=? AND owner_id=? AND version=? AND status='active'",
+          "UPDATE bookings SET title=?,date=?,start=?,end=?,room_id=?,kind=?,description=?,participants=?,link=?,updated_at=?,last_actor_id=?,search_text=?,version=version+1,owner_name=?,organizer_email=? WHERE id=? AND owner_id=? AND version=? AND status='active'",
         )
-        .bind(...values, id, user.userId, existing.version)
+        .bind(
+          ...values,
+          organizerName,
+          organizerEmail,
+          id,
+          user.userId,
+          existing.version,
+        )
         .run();
       if (!result.meta.changes)
         return json(
@@ -515,10 +544,25 @@ export async function POST(request: Request) {
     } else
       await db
         .prepare(
-          "INSERT INTO bookings(title,date,start,end,room_id,kind,description,participants,link,updated_at,last_actor_id,search_text,id,owner_id,owner_name,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO bookings(title,date,start,end,room_id,kind,description,participants,link,updated_at,last_actor_id,search_text,id,owner_id,owner_name,created_at,organizer_email) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
-        .bind(...values, id, user.userId, user.displayName, timestamp)
+        .bind(
+          ...values,
+          id,
+          user.userId,
+          organizerName,
+          timestamp,
+          organizerEmail,
+        )
         .run();
+    // Preserve a trusted administrator's identity email. A contact entered in
+    // a meeting cannot create, transfer or retain an administrative grant.
+    await db
+      .prepare(
+        "UPDATE agenda_visitors SET display_name=?,email=CASE WHEN is_admin=1 THEN email ELSE ? END WHERE token_hash=?",
+      )
+      .bind(organizerName, organizerEmail, user.tokenHash)
+      .run();
     const booking = await db
       .prepare(`SELECT ${fields} FROM bookings WHERE id=?`)
       .bind(id)

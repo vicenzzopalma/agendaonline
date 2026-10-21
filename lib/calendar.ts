@@ -21,6 +21,7 @@ export type Booking = {
   link: string;
   ownerId: string;
   ownerName: string;
+  organizerEmail?: string;
   createdAt?: number;
   updatedAt?: number;
   cancelledAt?: number | null;

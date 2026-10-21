@@ -24,6 +24,7 @@ export const bookings = sqliteTable(
     link: text("link").notNull().default(""),
     ownerId: text("owner_id").notNull(),
     ownerName: text("owner_name").notNull(),
+    organizerEmail: text("organizer_email").notNull().default(""),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull().default(0),
     cancelledAt: integer("cancelled_at"),
@@ -40,6 +41,18 @@ export const bookings = sqliteTable(
 export const settings = sqliteTable("settings", {
   id: text("id").primaryKey(),
   started: integer("started").notNull().default(0),
+});
+
+// Anonymous device capabilities. Store only a SHA-256 digest of the random
+// HttpOnly cookie. Contact fields never determine identity or admin rights.
+export const agendaVisitors = sqliteTable("agenda_visitors", {
+  tokenHash: text("token_hash").primaryKey(),
+  visitorId: text("visitor_id").notNull(),
+  displayName: text("display_name").notNull().default("Visitante"),
+  email: text("email").notNull().default(""),
+  isAdmin: integer("is_admin").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
 });
 
 export const bookingHistory = sqliteTable(

@@ -58,7 +58,12 @@ export function visibleBooking<
 >(booking: T, viewerId: string) {
   return booking.ownerId === viewerId
     ? booking
-    : { ...booking, participants: "", participantsRestricted: true };
+    : {
+        ...booking,
+        participants: "",
+        organizerEmail: "",
+        participantsRestricted: true,
+      };
 }
 
 // Search public event fields separately so another user's email cannot be
