@@ -3413,3 +3413,113 @@ small {
     grid-column: span 2;
   }
 }
+/* Recipient management and Outlook invitation preparation. */
+.recipients-field,
+.invitation-content {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+.recipients-field > label {
+  font-weight: 600;
+}
+.recipients-field > small,
+.invitation-content > small {
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.65;
+}
+.recipient-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.recipient-chips li {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 100%;
+  padding: 0.25rem 0.4rem 0.25rem 0.65rem;
+  border: 1px solid #c4cedb;
+  border-radius: 0.6rem;
+  background: #f0f3f7;
+  color: #192537;
+}
+.recipient-chips li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+}
+.recipient-chips .recipient-legacy {
+  background: #f7f2e8;
+  border-color: #b09e80;
+}
+.recipient-chips button {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  min-height: 2.25rem;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: #334965;
+  cursor: pointer;
+}
+.recipient-chips button:hover {
+  background: #dce3ed;
+}
+.invitation-content {
+  line-height: 1.65;
+}
+.invitation-content p {
+  margin: 0;
+}
+.invitation-recipients {
+  overflow-wrap: anywhere;
+}
+.invitation-buttons {
+  display: grid;
+  gap: 0.65rem;
+}
+.invitation-buttons .button {
+  white-space: normal;
+  text-align: center;
+  min-width: 0;
+}
+.invitation-note {
+  padding: 0.85rem;
+  background: #f7f2e8;
+  color: #574326;
+  border: 1px solid #b09e80;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+}
+.invitation-preview,
+.invitation-help {
+  min-width: 0;
+  font-size: 0.875rem;
+}
+.invitation-preview summary,
+.invitation-help summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0.5rem 0;
+}
+.invitation-preview strong {
+  display: block;
+  margin: 0.5rem 0;
+  overflow-wrap: anywhere;
+}
+.invitation-preview pre {
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 0.85rem;
+  background: #f3f5f8;
+  border-radius: 0.5rem;
+  margin: 0;
+}

@@ -16,6 +16,14 @@ import {
   validDate,
 } from "../../../lib/holidays";
 import { getHolidayYear, isCalendarAdmin } from "../../../lib/holiday-service";
+import {
+  normalizeRecipients,
+  splitRecipients,
+  validEmail,
+  visibleBooking,
+  publicSearchSQL,
+  invitationRecipients,
+} from "../../../lib/recipients";
 
 export const dynamic = "force-dynamic";
 const json = (data: unknown, status = 200) =>
@@ -51,6 +59,8 @@ export async function GET(request: Request) {
     const db = env.DB,
       params = new URL(request.url).searchParams;
     const rooms = await db.prepare("SELECT * FROM rooms ORDER BY rowid").all();
+    const visible = (rows: unknown[]) =>
+      (rows as Booking[]).map((row) => visibleBooking(row, user.userId));
     const today = dateKey(new Date()),
       time = new Intl.DateTimeFormat("pt-BR", {
         timeZone: "America/Sao_Paulo",
@@ -59,6 +69,18 @@ export async function GET(request: Request) {
         hour12: false,
       }).format(new Date());
     if (params.get("audit")) {
+      const owner = await db
+        .prepare("SELECT owner_id AS ownerId FROM bookings WHERE id=?")
+        .bind(clean(params.get("audit"), 100))
+        .first<{ ownerId: string }>();
+      if (!owner || owner.ownerId !== user.userId)
+        return json(
+          {
+            error:
+              "O histórico detalhado está disponível apenas para o organizador.",
+          },
+          403,
+        );
       const before = Number(params.get("before"));
       if (
         params.has("before") &&
@@ -89,8 +111,10 @@ export async function GET(request: Request) {
         values: (string | number)[] = [];
       const q = normalizeSearch(clean(params.get("q"), 120));
       if (q) {
-        conditions.push("instr(search_text,?)>0");
-        values.push(q);
+        conditions.push(
+          `(instr(${publicSearchSQL()},?)>0 OR (owner_id=? AND instr(search_text,?)>0))`,
+        );
+        values.push(q, user.userId, q);
       }
       for (const [key, operator] of [
         ["from", ">="],
@@ -153,7 +177,7 @@ export async function GET(request: Request) {
       ]);
       return json({
         rooms: rooms.results,
-        bookings: bookings.results,
+        bookings: visible(bookings.results),
         total: (total.results[0] as { total: number }).total,
         page,
         pageSize,
@@ -199,9 +223,9 @@ export async function GET(request: Request) {
     ]);
     return json({
       rooms: rooms.results,
-      bookings: bookings.results,
-      todayBookings: todayBookings.results,
-      upcoming: upcoming.results,
+      bookings: visible(bookings.results),
+      todayBookings: visible(todayBookings.results),
+      upcoming: visible(upcoming.results),
       stats: stats.results[0],
       started: true,
       user: userInfo(user),
@@ -381,7 +405,11 @@ export async function POST(request: Request) {
           },
           409,
         );
-      return json({ ok: true, id, status: "cancelled" });
+      const booking = await db
+        .prepare(`SELECT ${fields} FROM bookings WHERE id=?`)
+        .bind(id)
+        .first<Booking>();
+      return json({ ok: true, id, status: "cancelled", booking });
     }
     if (body.action !== "saveBooking")
       return json({ error: "Ação inválida." }, 400);
@@ -432,8 +460,25 @@ export async function POST(request: Request) {
     } catch {
       return json({ error: MEETING_LINK_ERROR }, 400);
     }
+    let participants: string;
+    try {
+      if (
+        body.participants !== undefined &&
+        typeof body.participants !== "string"
+      )
+        throw new Error("Informe os e-mails dos participantes.");
+      participants = normalizeRecipients(
+        typeof body.participants === "string"
+          ? body.participants
+          : existing?.participants || "",
+        splitRecipients(existing?.participants || "").filter(
+          (part) => !validEmail(part),
+        ),
+      );
+    } catch (error) {
+      return json({ error: (error as Error).message }, 400);
+    }
     const description = clean(body.description, 2000),
-      participants = clean(body.participants, 1000),
       timestamp = Date.now(),
       searchText = normalizeSearch(
         `${title} ${user.displayName} ${participants}`,
@@ -474,7 +519,25 @@ export async function POST(request: Request) {
         )
         .bind(...values, id, user.userId, user.displayName, timestamp)
         .run();
-    return json({ ok: true, id });
+    const booking = await db
+      .prepare(`SELECT ${fields} FROM bookings WHERE id=?`)
+      .bind(id)
+      .first<Booking>();
+    const currentRecipients = new Set(invitationRecipients(participants));
+    const removed = invitationRecipients(existing?.participants || "").filter(
+      (email) => !currentRecipients.has(email),
+    );
+    const removedInvitation =
+      existing && booking && removed.length
+        ? {
+            ...existing,
+            participants: removed.join(", "),
+            status: "cancelled",
+            version: booking.version,
+            updatedAt: booking.updatedAt,
+          }
+        : undefined;
+    return json({ ok: true, id, booking, removedInvitation });
   } catch (error) {
     const message = String(error);
     if (message.includes("ROOM_CONFLICT"))

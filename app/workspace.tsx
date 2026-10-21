@@ -65,6 +65,13 @@ import { HolidayNotice, HolidayToolbar } from "./holiday-indicator";
 import { CalendarPolicyDialog } from "./calendar-policy";
 import { HistoryPanel, BookingAudit } from "./history-panel";
 import { useNavigationDrawer } from "../hooks/use-navigation-drawer";
+import { RecipientsField } from "./recipients-field";
+import { InvitationDialog } from "./invitation-dialog";
+import {
+  normalizeRecipients,
+  splitRecipients,
+  validEmail,
+} from "../lib/recipients";
 
 type User = { id: string; name: string; email: string; isAdmin?: boolean };
 type Data = {
@@ -150,6 +157,12 @@ export default function Workspace() {
   const [sidebar, setSidebar] = useState(false);
   const [selected, setSelected] = useState<Booking | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [legacyRecipients, setLegacyRecipients] = useState<string[]>([]);
+  const [invitation, setInvitation] = useState<Booking | null>(null);
+  const [removedInvitation, setRemovedInvitation] = useState<Booking | null>(
+    null,
+  );
+  const [removedOnly, setRemovedOnly] = useState(false);
   const [roomDraft, setRoomDraft] = useState<RoomDraft | null>(null);
   const [help, setHelp] = useState(false);
   const [showCancelled, setShowCancelled] = useState(false);
@@ -311,6 +324,7 @@ export default function Workspace() {
         : [...previous, id],
     );
   function newBooking(day = anchor, start?: string, roomId = "") {
+    setLegacyRecipients([]);
     if (!start) {
       if (day === today && minutes(currentTime) < 23 * 60)
         start = toTime(Math.ceil(minutes(currentTime) / 30) * 30);
@@ -347,13 +361,18 @@ export default function Workspace() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const result = (await response.json()) as { error?: string };
+      const result = (await response.json()) as {
+        error?: string;
+        id?: string;
+        booking?: Booking;
+        removedInvitation?: Booking;
+      };
       if (!response.ok)
         throw new Error(result.error || "Não foi possível salvar.");
       await refresh(true);
       setHistoryRevision((value) => value + 1);
       setToast(message);
-      return true;
+      return result;
     } catch (error) {
       setFormError(
         error instanceof Error
@@ -366,6 +385,9 @@ export default function Workspace() {
     }
   }
   function editBooking(event: Booking) {
+    setLegacyRecipients(
+      splitRecipients(event.participants).filter((part) => !validEmail(part)),
+    );
     setSelected(null);
     setFormError("");
     setDraft({
@@ -394,18 +416,40 @@ export default function Workspace() {
   }
   const saveBooking = async (e: FormEvent) => {
     e.preventDefault();
+    if (!draft) return;
+    let participants: string;
+    try {
+      const pending = new FormData(e.currentTarget as HTMLFormElement).get(
+        "participantPending",
+      );
+      participants = normalizeRecipients(
+        [draft.participants, typeof pending === "string" ? pending : ""]
+          .filter(Boolean)
+          .join(", "),
+        legacyRecipients,
+      );
+    } catch (error) {
+      setFormError((error as Error).message);
+      return;
+    }
     if (draftHoliday) {
       setFormError(holidayMessage(draftHoliday));
       return;
     }
-    if (
-      await mutate(
-        { action: "saveBooking", ...draft },
-        draft?.id ? "Compromisso atualizado." : "Compromisso criado na agenda.",
-      )
-    ) {
+    const result = await mutate(
+      { action: "saveBooking", ...draft, participants },
+      draft?.id ? "Compromisso atualizado." : "Compromisso criado na agenda.",
+    );
+    if (result) {
       if (draft) changeAnchor(draft.date);
       setDraft(null);
+      setRemovedInvitation(result.removedInvitation || null);
+      setRemovedOnly(
+        !result.booking?.participants && !!result.removedInvitation,
+      );
+      if (result.booking?.participants) setInvitation(result.booking);
+      else if (result.removedInvitation)
+        setInvitation(result.removedInvitation);
     }
   };
   const saveRoom = async (e: FormEvent) => {
@@ -1508,6 +1552,9 @@ export default function Workspace() {
                 <span>
                   Organizador
                   {selected.participants ? ` · ${selected.participants}` : ""}
+                  {selected.participantsRestricted
+                    ? " · Participantes visíveis apenas ao organizador"
+                    : ""}
                 </span>
               </div>
             </div>
@@ -1533,12 +1580,32 @@ export default function Workspace() {
                 </span>
               )}
             </div>
-            <BookingAudit key={selected.id} bookingId={selected.id} />
+            {selected.ownerId === data?.user.id && (
+              <BookingAudit key={selected.id} bookingId={selected.id} />
+            )}
             {selected.description && (
               <p className="detail-description">{selected.description}</p>
             )}
           </div>
           <div className="modal-actions detail-actions">
+            {selected.ownerId === data?.user.id && selected.participants && (
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={() => {
+                  setInvitation(selected);
+                  setRemovedInvitation(null);
+                  setRemovedOnly(false);
+                  setSelected(null);
+                }}
+              >
+                {selected.status === "cancelled"
+                  ? "Preparar aviso de cancelamento"
+                  : (selected.version || 1) > 1
+                    ? "Preparar atualização do convite"
+                    : "Preparar convite"}
+              </button>
+            )}
             <button
               className="button button-secondary"
               onClick={() => download([selected])}
@@ -1690,21 +1757,15 @@ export default function Workspace() {
                 </div>
               )
             )}
-            <label>
-              Participantes
-              <input
-                maxLength={1000}
-                placeholder="Nomes ou e-mails, separados por vírgula"
-                value={draft.participants}
-                onChange={(e) =>
-                  setDraft({ ...draft, participants: e.target.value })
-                }
-              />
-              <small>
-                Os participantes ficam registrados na agenda. Convites por
-                e-mail não são enviados.
-              </small>
-            </label>
+            <RecipientsField
+              value={draft.participants}
+              legacy={legacyRecipients}
+              onChange={(participants) =>
+                setDraft((current) =>
+                  current ? { ...current, participants } : current,
+                )
+              }
+            />
             <label>
               Descrição <span className="optional">opcional</span>
               <textarea
@@ -1747,9 +1808,13 @@ export default function Workspace() {
                 )}
                 {saving
                   ? "Salvando…"
-                  : draft.id
-                    ? "Salvar alterações"
-                    : "Salvar compromisso"}
+                  : splitRecipients(draft.participants).some(validEmail)
+                    ? draft.id
+                      ? "Salvar alterações e preparar convite no Outlook"
+                      : "Salvar compromisso e preparar convite no Outlook"
+                    : draft.id
+                      ? "Salvar alterações"
+                      : "Salvar compromisso"}
               </button>
             </div>
           </form>
@@ -1927,22 +1992,25 @@ export default function Workspace() {
               className="button button-danger"
               disabled={saving}
               onClick={async () => {
-                if (
-                  await mutate(
-                    {
-                      action:
-                        confirm.type === "booking"
-                          ? "deleteBooking"
-                          : "archiveRoom",
-                      id: confirm.id,
-                    },
-                    confirm.type === "booking"
-                      ? "Compromisso cancelado."
-                      : "Sala arquivada.",
-                  )
-                ) {
+                const result = await mutate(
+                  {
+                    action:
+                      confirm.type === "booking"
+                        ? "deleteBooking"
+                        : "archiveRoom",
+                    id: confirm.id,
+                  },
+                  confirm.type === "booking"
+                    ? "Compromisso cancelado."
+                    : "Sala arquivada.",
+                );
+                if (result) {
                   setConfirm(null);
                   setRoomFilter([]);
+                  if (result.booking?.participants)
+                    setInvitation(result.booking);
+                  setRemovedInvitation(null);
+                  setRemovedOnly(false);
                 }
               }}
             >
@@ -1956,6 +2024,23 @@ export default function Workspace() {
             </button>
           </div>
         </Modal>
+      )}
+      {invitation && data && (
+        <InvitationDialog
+          event={invitation}
+          rooms={rooms}
+          organizer={data.user}
+          removedEvent={removedOnly ? null : removedInvitation}
+          removedOnly={removedOnly}
+          onPrepareRemoved={() => {
+            if (removedInvitation) {
+              setInvitation(removedInvitation);
+              setRemovedInvitation(null);
+              setRemovedOnly(true);
+            }
+          }}
+          onClose={() => setInvitation(null)}
+        />
       )}
       {policyOpen && (
         <CalendarPolicyDialog

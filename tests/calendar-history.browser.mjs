@@ -164,7 +164,7 @@ try {
         roomId: "horizonte",
         kind: "meeting",
         description: "Pauta original para teste local.",
-        participants: "Pessoa de teste",
+        participants: "pessoa@example.test",
         link: "https://meet.google.com/abc-defg-hij",
         ...overrides,
       });

@@ -129,8 +129,12 @@ async function setup(width, height = 900) {
       if (body.action === "saveBooking") {
         const id = body.id || "created-in-browser";
         state.bookings = state.bookings.filter((event) => event.id !== id);
-        state.bookings.push({ ...booking(100), ...body, id });
-        return route.fulfill({ status: 200, json: { ok: true, id } });
+        const saved = { ...booking(100), ...body, id };
+        state.bookings.push(saved);
+        return route.fulfill({
+          status: 200,
+          json: { ok: true, id, booking: saved },
+        });
       }
       return route.fulfill({ status: 200, json: { ok: true } });
     }
@@ -315,7 +319,10 @@ try {
     await dialog
       .getByLabel("Link do Google Meet")
       .fill("https://meet.google.com/xyz-abcd-efg");
-    await dialog.getByLabel("Participantes").fill("Equipe Realess");
+    await dialog
+      .getByLabel("Participantes", { exact: true })
+      .fill("equipe@example.test");
+    await dialog.getByLabel("Participantes", { exact: true }).press("Enter");
     await dialog.getByLabel("Descrição").fill("Pauta longa ".repeat(80));
     await fits(page, `form-${width}`);
     assert.ok(
@@ -325,7 +332,7 @@ try {
         .evaluate((e) => parseFloat(getComputedStyle(e).fontSize) >= 16),
     );
     const save = dialog.getByRole("button", {
-      name: "Salvar compromisso",
+      name: "Salvar compromisso e preparar convite no Outlook",
       exact: true,
     });
     await save.scrollIntoViewIfNeeded();
@@ -339,6 +346,7 @@ try {
       await page.screenshot({ path: resolve(output, `form-${width}.png`) });
     if (width === 390) await accessibility(page, "form-390");
     await save.click();
+    await page.getByRole("button", { name: "Agora não", exact: true }).click();
     await dialog.waitFor({ state: "hidden" });
     assert.ok(
       state().bookings.some(
@@ -366,8 +374,12 @@ try {
       .fill(`Editado ${width}`);
     await page
       .locator("dialog[open]")
-      .getByRole("button", { name: "Salvar alterações", exact: true })
+      .getByRole("button", {
+        name: "Salvar alterações e preparar convite no Outlook",
+        exact: true,
+      })
       .click();
+    await page.getByRole("button", { name: "Agora não", exact: true }).click();
     await page.locator("dialog[open]").waitFor({ state: "hidden" });
     await fits(page, `list-${width}`);
     checks.push(

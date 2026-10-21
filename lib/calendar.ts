@@ -17,6 +17,7 @@ export type Booking = {
   kind: string;
   description: string;
   participants: string;
+  participantsRestricted?: boolean;
   link: string;
   ownerId: string;
   ownerName: string;
