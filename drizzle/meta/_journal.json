@@ -8,6 +8,13 @@
       "when": 1792523795628,
       "tag": "0000_plain_cassandra_nova",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1792584546192,
+      "tag": "0001_whole_terror",
+      "breakpoints": true
     }
   ]
 }

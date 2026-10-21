@@ -2,6 +2,8 @@
 
 import { useRef, type KeyboardEvent } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { HolidayNotice } from "./holiday-indicator";
+import { blockedHoliday, holidayMessage, type Holiday } from "../lib/holidays";
 import {
   addDays,
   dateKey,
@@ -9,6 +11,7 @@ import {
   parseDay,
   TZ,
   type Booking,
+  bookingStatus,
 } from "../lib/calendar";
 
 const format = (day: string, options: Intl.DateTimeFormatOptions) =>
@@ -54,6 +57,7 @@ export function MiniCalendar({
   events,
   onMonth,
   onSelect,
+  holidays,
 }: {
   month: string;
   selected: string;
@@ -61,6 +65,7 @@ export function MiniCalendar({
   events: Booking[];
   onMonth: (day: string) => void;
   onSelect: (day: string) => void;
+  holidays: Holiday[];
 }) {
   const start = monday(month);
   const count = addDays(start, 35) >= nextMonth(month, 1) ? 35 : 42;
@@ -98,6 +103,7 @@ export function MiniCalendar({
         {Array.from({ length: count }, (_, index) => {
           const day = addDays(start, index);
           const total = events.filter((event) => event.date === day).length;
+          const holiday = holidays.find((item) => item.date === day);
           return (
             <button
               type="button"
@@ -107,11 +113,21 @@ export function MiniCalendar({
               aria-label={`${format(day, { day: "numeric", month: "long" })}${total ? `, ${total} compromissos` : ""}`}
               aria-pressed={day === selected}
               aria-current={day === today ? "date" : undefined}
+              title={
+                holiday
+                  ? `${holiday.name} · ${holiday.kind === "optional" ? "Ponto facultativo" : "Feriado"}`
+                  : undefined
+              }
               className={`${day.slice(0, 7) !== month.slice(0, 7) ? "other-month" : ""} ${day === selected ? "mini-selected" : ""} ${day === today ? "mini-today" : ""}`}
               onClick={() => onSelect(day)}
             >
               {parseDay(day).getUTCDate()}
               {total > 0 && <span />}
+              {holiday && (
+                <i
+                  className={`mini-holiday-marker ${holiday.kind === "optional" ? "optional-marker" : ""}`}
+                />
+              )}
             </button>
           );
         })}
@@ -129,6 +145,7 @@ export function MonthView({
   onEvent,
   onDay,
   onCreate,
+  holidays,
 }: {
   anchor: string;
   today: string;
@@ -138,6 +155,7 @@ export function MonthView({
   onEvent: (event: Booking) => void;
   onDay: (day: string) => void;
   onCreate: (day: string) => void;
+  holidays: Holiday[];
 }) {
   const first = `${anchor.slice(0, 7)}-01`;
   const start = monday(first);
@@ -148,6 +166,12 @@ export function MonthView({
     (a, b) => a.start.localeCompare(b.start) || a.title.localeCompare(b.title),
   );
   const selectedEvents = ordered.filter((event) => event.date === anchor);
+  const currentTime = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date());
   return (
     <div className="month-view">
       <div
@@ -164,22 +188,40 @@ export function MonthView({
         {Array.from({ length: count }, (_, index) => {
           const day = addDays(start, index);
           const dayEvents = ordered.filter((event) => event.date === day);
+          const holiday = holidays.find((item) => item.date === day);
           return (
             <div
               className={`month-day ${day.slice(0, 7) !== anchor.slice(0, 7) ? "other-month" : ""} ${day === anchor ? "selected-day" : ""}`}
               key={day}
+              data-holiday={holiday?.kind}
             >
               <button
                 type="button"
                 className={`month-day-number ${day === today ? "is-today" : ""}`}
                 data-date={day}
+                title={
+                  holidays
+                    .filter((item) => item.date === day)
+                    .map(
+                      (item) =>
+                        `${item.name} · ${item.kind === "optional" ? "Ponto facultativo" : "Feriado"}`,
+                    )
+                    .join(" · ") || undefined
+                }
                 onClick={() => onDay(day)}
                 onKeyDown={(event) => keys.onKeyDown(event, day)}
                 aria-pressed={day === anchor}
                 aria-current={day === today ? "date" : undefined}
-                aria-label={`${format(day, { weekday: "long", day: "numeric", month: "long" })}, ${dayEvents.length} compromissos`}
+                aria-label={`${format(day, { weekday: "long", day: "numeric", month: "long" })}, ${dayEvents.length} compromissos${holiday ? `, ${holiday.name}` : ""}`}
               >
-                <span>{parseDay(day).getUTCDate()}</span>
+                <span>
+                  {parseDay(day).getUTCDate()}
+                  {holiday && (
+                    <i
+                      className={`holiday-marker ${holiday.kind === "optional" ? "optional-marker" : ""}`}
+                    />
+                  )}
+                </span>
                 <span
                   className={`month-day-count ${dayEvents.length ? "has-events" : ""}`}
                   aria-hidden="true"
@@ -191,7 +233,7 @@ export function MonthView({
                 {dayEvents.slice(0, 3).map((event) => (
                   <button
                     type="button"
-                    className={`month-event color-${eventColor(event)}`}
+                    className={`month-event color-${eventColor(event)} ${event.status === "cancelled" ? "is-cancelled" : bookingStatus(event, today, currentTime) === "Realizado" ? "event-past" : "event-future"}`}
                     key={event.id}
                     onClick={() => onEvent(event)}
                   >
@@ -232,11 +274,18 @@ export function MonthView({
             type="button"
             className="button button-secondary"
             onClick={() => onCreate(anchor)}
+            disabled={!!blockedHoliday(anchor, holidays)}
+            title={
+              blockedHoliday(anchor, holidays)
+                ? holidayMessage(blockedHoliday(anchor, holidays)!)
+                : undefined
+            }
           >
             <Plus size={16} />
             Adicionar compromisso
           </button>
         </header>
+        <HolidayNotice date={anchor} holidays={holidays} />
         <p className="selected-day-total" role="status">
           {selectedEvents.length}{" "}
           {selectedEvents.length === 1 ? "compromisso" : "compromissos"}
@@ -251,7 +300,7 @@ export function MonthView({
             selectedEvents.map((event) => (
               <button
                 type="button"
-                className={`selected-day-event color-${eventColor(event)}`}
+                className={`selected-day-event color-${eventColor(event)} ${event.status === "cancelled" ? "is-cancelled" : bookingStatus(event, today, currentTime) === "Realizado" ? "event-past" : "event-future"}`}
                 key={event.id}
                 onClick={() => onEvent(event)}
               >
@@ -261,7 +310,8 @@ export function MonthView({
                 <span>
                   <strong>{event.title}</strong>
                   <small>
-                    {eventLocation(event)} · {event.ownerName}
+                    {eventLocation(event)} · {event.ownerName} ·{" "}
+                    {bookingStatus(event, today, currentTime)}
                   </small>
                 </span>
                 <ChevronRight size={16} />

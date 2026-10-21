@@ -57,6 +57,8 @@ Use o fluxo de publicação do plugin Sites para sincronizar o código, construi
 
 ## Responsividade
 
+As melhorias de feriados brasileiros, cancelamento lógico, histórico permanente, administração e fontes estão documentadas em [Calendário e histórico](docs/calendario-e-historico.md).
+
 Os estilos partem do celular e acrescentam espaço por media queries com `min-width`. O calendário mensal mantém sete colunas em qualquer largura. Em telas compactas, cada data mostra a quantidade de compromissos; selecionar um dia abre sua lista na própria visualização mensal. Em telas maiores, as células também exibem os títulos. A grade semanal mantém os intervalos de 30 minutos e usa rolagem apenas em seu próprio contêiner quando necessário.
 
 O roteiro de regressão está em `tests/responsive.browser.mjs`. Usa dados simulados apenas contra `localhost` ou `127.0.0.1`, sem escrever na agenda de produção. Instale Playwright e axe-core em um diretório de ferramentas e indique `PLAYWRIGHT_MODULE` (URL do módulo), `AXE_SCRIPT` (caminho para axe.min.js), e, opcionalmente, `CHROME_PATH` e `BASE_URL`. Com a prévia local iniciada:

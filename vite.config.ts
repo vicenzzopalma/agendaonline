@@ -63,6 +63,9 @@ export default defineConfig(async ({ command }) => {
           ...localBindingConfig,
           ...(command === "serve"
             ? {
+                vars: process.env.AGENDA_ADMIN_EMAILS
+                  ? { AGENDA_ADMIN_EMAILS: process.env.AGENDA_ADMIN_EMAILS }
+                  : {},
                 services: [
                   {
                     binding: "CONNECTORS",

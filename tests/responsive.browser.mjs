@@ -7,6 +7,8 @@ const { chromium } = await import(
   process.env.PLAYWRIGHT_MODULE || "playwright"
 );
 const { addDays, dateKey, monday } = await import("../lib/calendar.ts");
+const { baseHolidays, DEFAULT_POLICY, citySource } =
+  await import("../lib/holidays.ts");
 const output = resolve("outputs/responsive");
 mkdirSync(output, { recursive: true });
 const browser = await chromium.launch({
@@ -85,8 +87,25 @@ async function setup(width, height = 900) {
   };
   let mode = "normal";
   let release;
+  await page.route("**/api/holidays**", (route) => {
+    const year = Number(
+      new URL(route.request().url()).searchParams.get("year"),
+    );
+    return route.fulfill({
+      status: 200,
+      json: {
+        year,
+        holidays: baseHolidays(year),
+        state: "fresh",
+        checkedAt: Date.now(),
+        source: citySource(year),
+        policy: DEFAULT_POLICY,
+        isAdmin: false,
+      },
+    });
+  });
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.route("**/api/workspace", async (route) => {
+  await page.route("**/api/workspace**", async (route) => {
     if (mode === "loading")
       await new Promise((resolve) => {
         release = resolve;

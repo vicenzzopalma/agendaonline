@@ -42,6 +42,7 @@ import {
 import {
   addDays,
   bookingLocation,
+  bookingStatus,
   createICS,
   dateKey,
   minutes,
@@ -58,17 +59,26 @@ import {
 import { MeetingLinkField, MeetingLinkDetail } from "./meeting-link";
 import { MiniCalendar, MonthView, nextMonth } from "./calendar-views";
 import { Modal } from "./modal";
+import { useHolidays } from "../hooks/use-holidays";
+import { blockedHoliday, holidayMessage, type Holiday } from "../lib/holidays";
+import { HolidayNotice, HolidayToolbar } from "./holiday-indicator";
+import { CalendarPolicyDialog } from "./calendar-policy";
+import { HistoryPanel, BookingAudit } from "./history-panel";
 import { useNavigationDrawer } from "../hooks/use-navigation-drawer";
 
-type User = { id: string; name: string; email: string };
+type User = { id: string; name: string; email: string; isAdmin?: boolean };
 type Data = {
   rooms: Room[];
   bookings: Booking[];
   started: boolean;
+  todayBookings?: Booking[];
+  upcoming?: Booking[];
+  stats?: { week: number; mine: number };
   user: User;
 };
 type Draft = {
   id?: string;
+  version?: number;
   title: string;
   date: string;
   start: string;
@@ -124,7 +134,9 @@ export default function Workspace() {
   }).format(now);
   const [anchor, setAnchor] = useState(today);
   const [miniMonth, setMiniMonth] = useState(today.slice(0, 7) + "-01");
-  const [tab, setTab] = useState<"calendar" | "rooms" | "mine">("calendar");
+  const [tab, setTab] = useState<"calendar" | "rooms" | "mine" | "history">(
+    "calendar",
+  );
   const [view, setView] = useState<"week" | "month" | "list">("week");
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
@@ -140,6 +152,18 @@ export default function Workspace() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [roomDraft, setRoomDraft] = useState<RoomDraft | null>(null);
   const [help, setHelp] = useState(false);
+  const [showCancelled, setShowCancelled] = useState(false);
+  const [policyOpen, setPolicyOpen] = useState(false);
+  const [historyRevision, setHistoryRevision] = useState(0);
+  const holidayData = useHolidays([
+    Number(anchor.slice(0, 4)),
+    Number(miniMonth.slice(0, 4)),
+    Number(draft?.date.slice(0, 4) || anchor.slice(0, 4)),
+  ]);
+  const holidays = holidayData.holidays;
+  const loadFrom = addDays(anchor.slice(0, 7) + "-01", -7),
+    loadTo = addDays(nextMonth(anchor, 1), 7);
+  const requestSequence = useRef(0);
   const [confirm, setConfirm] = useState<{
     type: "booking" | "room";
     id: string;
@@ -152,32 +176,40 @@ export default function Workspace() {
   const { panelRef, mainRef } = useNavigationDrawer(sidebar, () =>
     setSidebar(false),
   );
-  const refresh = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    try {
-      const response = await fetch("/api/workspace", { cache: "no-store" });
-      const body = (await response.json()) as Data & {
-        error?: string;
-        signIn?: boolean;
-      };
-      if (!response.ok) {
-        setSignIn(!!body.signIn);
-        throw new Error(body.error || "Não foi possível carregar a agenda.");
-      }
-      setData(body);
-      setLoadError("");
-      setSignIn(false);
-    } catch (error) {
-      if (!silent)
-        setLoadError(
-          error instanceof Error
-            ? error.message
-            : "Não foi possível carregar a agenda.",
+  const refresh = useCallback(
+    async (silent = false) => {
+      const sequence = ++requestSequence.current;
+      if (!silent) setLoading(true);
+      try {
+        const response = await fetch(
+          `/api/workspace?from=${loadFrom}&to=${loadTo}&includeCancelled=${showCancelled ? 1 : 0}`,
+          { cache: "no-store" },
         );
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, []);
+        const body = (await response.json()) as Data & {
+          error?: string;
+          signIn?: boolean;
+        };
+        if (sequence !== requestSequence.current) return;
+        if (!response.ok) {
+          setSignIn(!!body.signIn);
+          throw new Error(body.error || "Não foi possível carregar a agenda.");
+        }
+        setData(body);
+        setLoadError("");
+        setSignIn(false);
+      } catch (error) {
+        if (!silent && sequence === requestSequence.current)
+          setLoadError(
+            error instanceof Error
+              ? error.message
+              : "Não foi possível carregar a agenda.",
+          );
+      } finally {
+        if (!silent && sequence === requestSequence.current) setLoading(false);
+      }
+    },
+    [loadFrom, loadTo, showCancelled],
+  );
   useEffect(() => {
     void refresh();
     const interval = setInterval(() => {
@@ -209,6 +241,7 @@ export default function Workspace() {
   const rooms = data?.rooms || [];
   const activeRooms = rooms.filter((r) => !!r.active);
   const events = data?.bookings || [];
+  const activeEvents = events.filter((event) => event.status !== "cancelled");
   const filtered = events.filter(
     (e) =>
       (!search ||
@@ -233,21 +266,21 @@ export default function Workspace() {
     .sort(
       (a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start),
     );
-  const weekEvents = events.filter(
+  const weekEvents = activeEvents.filter(
     (e) => e.date >= monday(today) && e.date <= addDays(monday(today), 6),
   );
-  const todayEvents = events
+  const todayEvents = (data?.todayBookings || activeEvents)
     .filter((e) => e.date === today)
     .sort((a, b) => a.start.localeCompare(b.start));
   const busy = (roomId: string) =>
-    events.find(
+    (data?.todayBookings || activeEvents).find(
       (e) =>
         e.roomId === roomId &&
         e.date === today &&
         e.start <= currentTime &&
         e.end > currentTime,
     );
-  const upcoming = events
+  const upcoming = (data?.upcoming || activeEvents)
     .filter((e) => e.date > today)
     .sort(
       (a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start),
@@ -260,6 +293,8 @@ export default function Workspace() {
   const eventLocation = (event: Booking) => bookingLocation(event, rooms);
   const changeAnchor = (day: string) => {
     if ([0, 6].includes(parseDay(day).getUTCDay())) setWeekends(true);
+    const holiday = blockedHoliday(day, holidays);
+    if (holiday) setToast(holidayMessage(holiday));
     setAnchor(day);
     setMiniMonth(day.slice(0, 7) + "-01");
   };
@@ -285,6 +320,11 @@ export default function Workspace() {
       }
     }
     setSidebar(false);
+    const holiday = blockedHoliday(day, holidays);
+    if (holiday) {
+      setToast(holidayMessage(holiday));
+      return;
+    }
     setFormError("");
     setDraft({
       title: "",
@@ -311,6 +351,7 @@ export default function Workspace() {
       if (!response.ok)
         throw new Error(result.error || "Não foi possível salvar.");
       await refresh(true);
+      setHistoryRevision((value) => value + 1);
       setToast(message);
       return true;
     } catch (error) {
@@ -329,6 +370,7 @@ export default function Workspace() {
     setFormError("");
     setDraft({
       id: event.demo ? undefined : event.id,
+      version: event.version,
       title: event.title,
       date: event.date,
       start: event.start,
@@ -352,6 +394,10 @@ export default function Workspace() {
   }
   const saveBooking = async (e: FormEvent) => {
     e.preventDefault();
+    if (draftHoliday) {
+      setFormError(holidayMessage(draftHoliday));
+      return;
+    }
     if (
       await mutate(
         { action: "saveBooking", ...draft },
@@ -391,6 +437,7 @@ export default function Workspace() {
       "Agenda exportada. Importe o arquivo no Outlook ou Google Agenda.",
     );
   }
+  const draftHoliday = draft ? blockedHoliday(draft.date, holidays) : undefined;
   const draftConflict =
     draft &&
     data?.bookings.find(
@@ -437,10 +484,10 @@ export default function Workspace() {
         <a href="/" className="brand" aria-label="Realess início">
           <img
             className="brand-logo"
-            src="/realess-logo.png"
+            src="/realess-logo-hd.png"
             alt="Realess · Cobranças Empresariais"
-            width={432}
-            height={135}
+            width={1080}
+            height={1080}
           />
         </a>
         <div className="workspace-badge">
@@ -478,12 +525,20 @@ export default function Workspace() {
             <CalendarCheck2 size={19} />
             Meus compromissos
           </button>
+          <button
+            className={`nav-item ${tab === "history" ? "active" : ""}`}
+            onClick={() => switchTab("history")}
+          >
+            <Search size={19} />
+            Histórico
+          </button>
         </nav>
         <MiniCalendar
           month={miniMonth}
           selected={anchor}
           today={today}
           events={events}
+          holidays={holidays}
           onMonth={setMiniMonth}
           onSelect={(day) => {
             changeAnchor(day);
@@ -589,7 +644,9 @@ export default function Workspace() {
                 ? "Salas de reunião"
                 : tab === "mine"
                   ? "Meus compromissos"
-                  : "Agenda"}
+                  : tab === "history"
+                    ? "Histórico"
+                    : "Agenda"}
             </strong>
           </div>
           <div className="topbar-right">
@@ -624,7 +681,9 @@ export default function Workspace() {
                   ? "Salas de reunião"
                   : tab === "mine"
                     ? "Meus compromissos"
-                    : "Agenda Realess"}
+                    : tab === "history"
+                      ? "Histórico da Realess"
+                      : "Agenda Realess"}
               </h1>
               <p>
                 {tab === "rooms"
@@ -669,7 +728,7 @@ export default function Workspace() {
             <Stat
               icon={<Clock3 size={20} />}
               label="Nesta semana"
-              value={weekEvents.length}
+              value={data?.stats?.week ?? weekEvents.length}
               note="Uma visão dos próximos encontros"
               color="blue"
             />
@@ -677,6 +736,7 @@ export default function Workspace() {
               icon={<CalendarCheck2 size={20} />}
               label="Meus compromissos"
               value={
+                data?.stats?.mine ??
                 weekEvents.filter((e) => e.ownerId === data?.user.id).length
               }
               note="Na sua agenda desta semana"
@@ -723,7 +783,18 @@ export default function Workspace() {
                   {formError}
                 </p>
               )}
-              {tab === "rooms" ? (
+              {tab === "history" ? (
+                <HistoryPanel
+                  rooms={rooms}
+                  revision={historyRevision}
+                  onSelect={(event) => {
+                    changeAnchor(event.date);
+                    setView("month");
+                    setTab("calendar");
+                    setSelected(event);
+                  }}
+                />
+              ) : tab === "rooms" ? (
                 <>
                   <div className="section-heading">
                     <div>
@@ -882,6 +953,19 @@ export default function Workspace() {
                             year: "numeric",
                           }).replace(" de ", " ")}
                         </h2>
+                        <label className="period-picker">
+                          <span className="sr-only">Selecionar mês e ano</span>
+                          <input
+                            type="month"
+                            min="1900-01"
+                            max="2199-12"
+                            value={anchor.slice(0, 7)}
+                            onChange={(event) => {
+                              if (/^\d{4}-\d{2}$/.test(event.target.value))
+                                changeAnchor(event.target.value + "-01");
+                            }}
+                          />
+                        </label>
                         <div className="calendar-arrows">
                           <button
                             className="icon-button"
@@ -991,6 +1075,16 @@ export default function Workspace() {
                     )}
                     {filtersOpen && (
                       <div className="filter-panel" id="agenda-filters">
+                        <label className="checkbox-label">
+                          <input
+                            type="checkbox"
+                            checked={showCancelled}
+                            onChange={(event) =>
+                              setShowCancelled(event.target.checked)
+                            }
+                          />
+                          Exibir cancelados no calendário
+                        </label>
                         <fieldset className="inline-room-filters">
                           <legend>Salas de reunião</legend>
                           {activeRooms.map((room) => (
@@ -1050,8 +1144,15 @@ export default function Workspace() {
                         </button>
                       </div>
                     )}
+                    <HolidayToolbar
+                      record={holidayData.records[Number(anchor.slice(0, 4))]}
+                      error={holidayData.error}
+                      isAdmin={!!data?.user.isAdmin}
+                      onConfigure={() => setPolicyOpen(true)}
+                    />
                     {view === "week" ? (
                       <WeekView
+                        holidays={holidays}
                         days={days}
                         today={today}
                         events={filtered}
@@ -1066,6 +1167,7 @@ export default function Workspace() {
                       />
                     ) : view === "month" ? (
                       <MonthView
+                        holidays={holidays}
                         anchor={anchor}
                         today={today}
                         events={filtered}
@@ -1084,7 +1186,7 @@ export default function Workspace() {
                         {rangeEvents.length ? (
                           rangeEvents.map((e) => (
                             <button
-                              className="agenda-row"
+                              className={`agenda-row ${e.status === "cancelled" ? "is-cancelled" : ""}`}
                               key={e.id}
                               onClick={() => setSelected(e)}
                             >
@@ -1099,6 +1201,11 @@ export default function Workspace() {
                               />
                               <div className="agenda-row-title">
                                 <strong>{e.title}</strong>
+                                <small
+                                  className={`booking-status ${e.status === "cancelled" ? "status-cancelled" : ""}`}
+                                >
+                                  {bookingStatus(e, today, currentTime)}
+                                </small>
                                 <span>
                                   {eventLocation(e)} · {e.ownerName}
                                 </span>
@@ -1345,11 +1452,17 @@ export default function Workspace() {
             <span className={`detail-kind color-${eventColor(selected)}`}>
               {kinds[selected.kind] || "Reunião"}
             </span>
+            <span
+              className={`booking-status ${selected.status === "cancelled" ? "status-cancelled" : ""}`}
+            >
+              {bookingStatus(selected, today, currentTime)}
+            </span>
             <MeetingLinkDetail
               value={selected.link}
               onCopy={copyMeetingLink}
               onAddLink={
-                selected.demo || selected.ownerId === data?.user.id
+                selected.status !== "cancelled" &&
+                (selected.demo || selected.ownerId === data?.user.id)
                   ? () => editBooking(selected)
                   : undefined
               }
@@ -1398,6 +1511,29 @@ export default function Workspace() {
                 </span>
               </div>
             </div>
+            <div className="record-timestamps">
+              {selected.createdAt !== undefined && (
+                <span>
+                  Criado em{" "}
+                  {new Intl.DateTimeFormat("pt-BR", {
+                    timeZone: TZ,
+                    dateStyle: "short",
+                    timeStyle: "short",
+                  }).format(new Date(selected.createdAt))}
+                </span>
+              )}
+              {!!selected.updatedAt && (selected.version || 1) > 1 && (
+                <span>
+                  Última alteração:{" "}
+                  {new Intl.DateTimeFormat("pt-BR", {
+                    timeZone: TZ,
+                    dateStyle: "short",
+                    timeStyle: "short",
+                  }).format(new Date(selected.updatedAt))}
+                </span>
+              )}
+            </div>
+            <BookingAudit key={selected.id} bookingId={selected.id} />
             {selected.description && (
               <p className="detail-description">{selected.description}</p>
             )}
@@ -1410,35 +1546,36 @@ export default function Workspace() {
               <Download size={15} />
               Exportar
             </button>
-            {(selected.demo || selected.ownerId === data?.user.id) && (
-              <>
-                <button
-                  className="button button-primary"
-                  onClick={() => editBooking(selected)}
-                >
-                  <Pencil size={15} />
-                  {selected.demo ? "Usar como modelo" : "Editar compromisso"}
-                </button>
-                {!selected.demo && (
+            {selected.status !== "cancelled" &&
+              (selected.demo || selected.ownerId === data?.user.id) && (
+                <>
                   <button
-                    className="icon-button danger-text"
-                    aria-label="Cancelar compromisso"
-                    title="Cancelar compromisso"
-                    onClick={() => {
-                      setConfirm({
-                        type: "booking",
-                        id: selected.id,
-                        name: selected.title,
-                      });
-                      setSelected(null);
-                      setFormError("");
-                    }}
+                    className="button button-primary"
+                    onClick={() => editBooking(selected)}
                   >
-                    <Trash2 size={18} />
+                    <Pencil size={15} />
+                    {selected.demo ? "Usar como modelo" : "Editar compromisso"}
                   </button>
-                )}
-              </>
-            )}
+                  {!selected.demo && (
+                    <button
+                      className="icon-button danger-text"
+                      aria-label="Cancelar compromisso"
+                      title="Cancelar compromisso"
+                      onClick={() => {
+                        setConfirm({
+                          type: "booking",
+                          id: selected.id,
+                          name: selected.title,
+                        });
+                        setSelected(null);
+                        setFormError("");
+                      }}
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  )}
+                </>
+              )}
           </div>
         </Modal>
       )}
@@ -1530,6 +1667,11 @@ export default function Workspace() {
               value={draft.link}
               onChange={(link) => setDraft({ ...draft, link })}
             />
+            {draftHoliday && (
+              <p className="form-error" role="alert">
+                {holidayMessage(draftHoliday)}
+              </p>
+            )}
             {draftConflict ? (
               <div className="conflict-note" role="alert">
                 <Info size={17} />
@@ -1595,7 +1737,7 @@ export default function Workspace() {
               </button>
               <button
                 type="submit"
-                disabled={saving || !!draftConflict}
+                disabled={saving || !!draftConflict || !!draftHoliday}
                 className="button button-primary"
               >
                 {saving ? (
@@ -1756,9 +1898,9 @@ export default function Workspace() {
           <p className="confirm-description">
             {confirm.type === "booking" ? (
               <>
-                O compromisso <strong>{confirm.name}</strong> será removido da
-                agenda. Se houver uma sala reservada, o horário ficará
-                disponível.
+                O compromisso <strong>{confirm.name}</strong> será marcado como
+                cancelado e permanecerá no histórico. Se houver uma sala
+                reservada, o horário ficará disponível.
               </>
             ) : (
               <>
@@ -1814,6 +1956,17 @@ export default function Workspace() {
             </button>
           </div>
         </Modal>
+      )}
+      {policyOpen && (
+        <CalendarPolicyDialog
+          record={holidayData.records[Number(anchor.slice(0, 4))]}
+          onClose={() => setPolicyOpen(false)}
+          onSaved={() => {
+            setPolicyOpen(false);
+            holidayData.reload();
+            setToast("Calendário da empresa atualizado.");
+          }}
+        />
       )}
       {help && (
         <Modal
@@ -1910,6 +2063,7 @@ function Stat({
   );
 }
 function WeekView({
+  holidays,
   days,
   today,
   events,
@@ -1919,6 +2073,7 @@ function WeekView({
   onEvent,
   onSlot,
 }: {
+  holidays: Holiday[];
   days: string[];
   today: string;
   events: Booking[];
@@ -1959,11 +2114,27 @@ function WeekView({
             <div className="timezone-cell">GMT−3</div>
             {days.map((day) => (
               <div
-                className={`day-heading ${day === today ? "is-today" : ""}`}
+                title={holidays
+                  .filter((item) => item.date === day)
+                  .map(
+                    (item) =>
+                      `${item.name} · ${item.kind === "optional" ? "Ponto facultativo" : "Feriado"}`,
+                  )
+                  .join(" · ")}
+                className={`day-heading ${day === today ? "is-today" : ""} ${holidays.some((item) => item.date === day && item.kind !== "optional") ? "has-holiday" : holidays.some((item) => item.date === day) ? "has-optional" : ""}`}
                 key={day}
               >
                 <span>{fmt(day, { weekday: "short" }).replace(".", "")}</span>
                 <strong>{fmt(day, { day: "2-digit" })}</strong>
+                {holidays.some((item) => item.date === day) && (
+                  <span
+                    className={`holiday-marker ${holidays.some((item) => item.date === day && item.kind !== "optional") ? "" : "optional-marker"}`}
+                    aria-label={holidays
+                      .filter((item) => item.date === day)
+                      .map((item) => item.name)
+                      .join(" · ")}
+                  />
+                )}
                 {day === today && <span className="today-indicator" />}
               </div>
             ))}
@@ -1999,7 +2170,7 @@ function WeekView({
                   ({ event, lane, lanes }) => (
                     <button
                       key={event.id}
-                      className={`calendar-event color-${eventColor(event)} ${minutes(event.end) - minutes(event.start) < 60 ? "short-event" : ""}`}
+                      className={`calendar-event ${event.status === "cancelled" ? "is-cancelled" : event.date < today || (event.date === today && event.end <= currentTime) ? "event-past" : "event-future"} color-${eventColor(event)} ${minutes(event.end) - minutes(event.start) < 60 ? "short-event" : ""}`}
                       style={{
                         top: `${((minutes(event.start) - startHour * 60) / 60) * hourHeight + 0.1875}rem`,
                         height: `${Math.max(1.5, ((minutes(event.end) - minutes(event.start)) / 60) * hourHeight - 0.375)}rem`,
