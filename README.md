@@ -2,6 +2,8 @@
 
 Agenda compartilhada para organizar compromissos, atividades e reuniões da Realess. A reserva de sala é opcional. Interface em português, com visões de semana, mês e lista, busca, filtros por sala e tipo, gerenciamento de salas e exportação `.ics`.
 
+A identidade visual segue o [site oficial da Realess](https://www.realess.com.br/), com azul-marinho `#192537`, dourado/bege `#B09E80` e superfícies brancas. O logotipo foi obtido do próprio site. Textos de leitura têm contraste reforçado; os formulários usam fontes de 16 px, com títulos, horários e controles ampliados. As faixas horárias do calendário têm 96 px para acomodar os eventos sem reduzir o tamanho das letras.
+
 ## Como funciona
 
 - Os registros são persistidos no Cloudflare D1. O navegador guarda apenas o estado da interface.

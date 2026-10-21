@@ -17,9 +17,12 @@ export function MeetingLinkField({ value, onChange }: { value: string; onChange:
   </section>;
 }
 
-export function MeetingLinkDetail({ value, onCopy }: { value: string; onCopy: (url: string) => void }) {
+export function MeetingLinkDetail({ value, onCopy, onAddLink }: { value: string; onCopy: (url: string) => void; onAddLink?: () => void }) {
   const info = meetingLinkInfo(value);
-  if (!info) return null;
+  if (!info) return <section className="meeting-detail-card" aria-label="Link da reunião">
+    <div className="meeting-detail-heading"><span className="meeting-service-icon"><Video size={20}/></span><div><strong>Link da reunião</strong><span>{onAddLink ? "Este compromisso ainda não tem um link de reunião." : "O organizador ainda não adicionou um link de reunião."}</span></div></div>
+    {onAddLink && <button className="button button-secondary" type="button" onClick={onAddLink}><Video size={16}/>Adicionar link do Meet</button>}
+  </section>;
   return <section className="meeting-detail-card" aria-label={info.isMeet ? "Reunião no Google Meet" : "Reunião online"}>
     <div className="meeting-detail-heading"><span className="meeting-service-icon"><Video size={20}/></span><div><strong>{info.isMeet ? "Google Meet" : "Reunião online"}</strong><span>Acesse a chamada pelo link da reunião.</span></div></div>
     <a className="meeting-url" href={info.url} target="_blank" rel="noopener noreferrer">{info.url}</a>
