@@ -44,6 +44,9 @@ Os testes verificam limites de datas, conflitos, disposição de encontros sobre
 ## Arquivos principais
 
 - `app/workspace.tsx`: interface e interações.
+- `app/calendar-views.tsx`: calendários mensal e de seleção de datas, com navegação por teclado e agenda do dia selecionado.
+- `app/modal.tsx`: diálogos compartilhados, rolagem interna e adaptação à área visível com teclado virtual.
+- `hooks/use-navigation-drawer.ts`: foco, Escape, retorno de foco e bloqueio do conteúdo atrás do menu móvel.
 - `app/globals.css`: estilos e cores da identidade visual.
 - `app/api/workspace/route.ts`: leitura, validação, autorização e alterações.
 - `lib/calendar.ts`: datas, conflitos, disposição dos eventos e exportação.
@@ -51,3 +54,15 @@ Os testes verificam limites de datas, conflitos, disposição de encontros sobre
 - `.openai/hosting.json`: identidade do site e vínculo do banco.
 
 Use o fluxo de publicação do plugin Sites para sincronizar o código, construir e publicar a versão. A migração de produção é aplicada pela hospedagem. Credenciais não pertencem ao repositório.
+
+## Responsividade
+
+Os estilos partem do celular e acrescentam espaço por media queries com `min-width`. O calendário mensal mantém sete colunas em qualquer largura. Em telas compactas, cada data mostra a quantidade de compromissos; selecionar um dia abre sua lista na própria visualização mensal. Em telas maiores, as células também exibem os títulos. A grade semanal mantém os intervalos de 30 minutos e usa rolagem apenas em seu próprio contêiner quando necessário.
+
+O roteiro de regressão está em `tests/responsive.browser.mjs`. Usa dados simulados apenas contra `localhost` ou `127.0.0.1`, sem escrever na agenda de produção. Instale Playwright e axe-core em um diretório de ferramentas e indique `PLAYWRIGHT_MODULE` (URL do módulo), `AXE_SCRIPT` (caminho para axe.min.js), e, opcionalmente, `CHROME_PATH` e `BASE_URL`. Com a prévia local iniciada:
+
+```powershell
+node --experimental-strip-types tests/responsive.browser.mjs
+```
+
+Capturas e resultados são gravados em `outputs/responsive/`, ignorado pelo Git. O relatório de validação e as limitações estão em `docs/responsividade.md`.

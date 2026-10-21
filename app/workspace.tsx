@@ -1,164 +1,2091 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, Search, SlidersHorizontal, DoorOpen, Clock3, Users, ArrowUpRight, Check, Video, X, MapPin, Download, List, LayoutGrid, CircleHelp, Menu, ArrowRight, Sparkles, Monitor, Pencil, Trash2, ExternalLink, LoaderCircle, CalendarCheck2, Building2, CheckCircle2, Info, RefreshCw } from "lucide-react";
-import { addDays, bookingLocation, createICS, dateKey, minutes, monday, overlaps, parseDay, placeEvents, toTime, TZ, type Booking, type Room } from "../lib/calendar";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import {
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  DoorOpen,
+  Clock3,
+  Users,
+  ArrowUpRight,
+  Check,
+  Video,
+  X,
+  MapPin,
+  Download,
+  List,
+  LayoutGrid,
+  CircleHelp,
+  Menu,
+  ArrowRight,
+  Sparkles,
+  Pencil,
+  Trash2,
+  LoaderCircle,
+  CalendarCheck2,
+  Building2,
+  CheckCircle2,
+  Info,
+  RefreshCw,
+} from "lucide-react";
+import {
+  addDays,
+  bookingLocation,
+  createICS,
+  dateKey,
+  minutes,
+  monday,
+  overlaps,
+  parseDay,
+  placeEvents,
+  toTime,
+  TZ,
+  type Booking,
+  type Room,
+} from "../lib/calendar";
 
 import { MeetingLinkField, MeetingLinkDetail } from "./meeting-link";
+import { MiniCalendar, MonthView, nextMonth } from "./calendar-views";
+import { Modal } from "./modal";
+import { useNavigationDrawer } from "../hooks/use-navigation-drawer";
 
 type User = { id: string; name: string; email: string };
-type Data = { rooms: Room[]; bookings: Booking[]; started: boolean; user: User };
-type Draft = { id?: string; title: string; date: string; start: string; end: string; roomId: string; kind: string; description: string; participants: string; link: string };
-type RoomDraft = { id?: string; name: string; capacity: number; location: string; equipment: string; color: string };
-const colorNames: Record<string, string> = { green: "Azul Realess", blue: "Dourado Realess", purple: "Azul acinzentado", orange: "Areia" };
-const kinds: Record<string, string> = { appointment: "Compromisso", meeting: "Reunião interna", client: "Reunião com cliente", focus: "Tempo de foco", online: "Reunião online" };
-const fmt = (day: string, options: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { ...options, timeZone: TZ }).format(parseDay(day));
-const initials = (name: string) => name.split(/[ @.]/).filter(Boolean).slice(0,2).map(s => s[0]).join("").toUpperCase();
-
-function Modal({ title, subtitle, children, onClose, wide = false }: { title: string; subtitle?: string; children: ReactNode; onClose: () => void; wide?: boolean }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => { const dialog = ref.current; const previous = document.activeElement as HTMLElement; dialog?.showModal(); return () => { dialog?.close(); previous?.focus(); }; }, []);
-  return <dialog ref={ref} className={`modal ${wide ? "modal-wide" : ""}`} onCancel={event => { event.preventDefault(); onClose(); }} onClick={event => { if(event.target === event.currentTarget) onClose(); }}><div className="modal-inner"><header className="modal-heading"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div><button className="icon-button" aria-label="Fechar" onClick={onClose}><X size={20}/></button></header>{children}</div></dialog>;
-}
+type Data = {
+  rooms: Room[];
+  bookings: Booking[];
+  started: boolean;
+  user: User;
+};
+type Draft = {
+  id?: string;
+  title: string;
+  date: string;
+  start: string;
+  end: string;
+  roomId: string;
+  kind: string;
+  description: string;
+  participants: string;
+  link: string;
+};
+type RoomDraft = {
+  id?: string;
+  name: string;
+  capacity: number;
+  location: string;
+  equipment: string;
+  color: string;
+};
+const colorNames: Record<string, string> = {
+  green: "Azul Realess",
+  blue: "Dourado Realess",
+  purple: "Azul acinzentado",
+  orange: "Areia",
+};
+const kinds: Record<string, string> = {
+  appointment: "Compromisso",
+  meeting: "Reunião interna",
+  client: "Reunião com cliente",
+  focus: "Tempo de foco",
+  online: "Reunião online",
+};
+const fmt = (day: string, options: Intl.DateTimeFormatOptions) =>
+  new Intl.DateTimeFormat("pt-BR", { ...options, timeZone: TZ }).format(
+    parseDay(day),
+  );
+const initials = (name: string) =>
+  name
+    .split(/[ @.]/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0])
+    .join("")
+    .toUpperCase();
 
 export default function Workspace() {
   const [now, setNow] = useState(new Date());
   const today = dateKey(now);
-  const currentTime = new Intl.DateTimeFormat("pt-BR", { timeZone:TZ, hour:"2-digit", minute:"2-digit", hour12:false }).format(now);
+  const currentTime = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(now);
   const [anchor, setAnchor] = useState(today);
-  const [miniMonth, setMiniMonth] = useState(today.slice(0,7) + "-01");
-  const [tab,setTab] = useState<"calendar"|"rooms"|"mine">("calendar");
-  const [view,setView] = useState<"week"|"month"|"list">("week");
-  const [data,setData] = useState<Data|null>(null);
-  const [loading,setLoading] = useState(true);
-  const [loadError,setLoadError] = useState("");
-  const [signIn,setSignIn] = useState(false);
-  const [search,setSearch] = useState("");
-  const [roomFilter,setRoomFilter] = useState<string[]>([]);
-  const [kindFilter,setKindFilter] = useState("");
-  const [filtersOpen,setFiltersOpen] = useState(false);
-  const [weekends,setWeekends] = useState(false);
-  const [sidebar,setSidebar] = useState(false);
-  const [selected,setSelected] = useState<Booking|null>(null);
-  const [draft,setDraft] = useState<Draft|null>(null);
-  const [roomDraft,setRoomDraft] = useState<RoomDraft|null>(null);
-  const [help,setHelp] = useState(false);
-  const [confirm,setConfirm] = useState<{ type:"booking"|"room"; id:string; name:string }|null>(null);
-  const [saving,setSaving] = useState(false);
-  const [formError,setFormError] = useState("");
-  const [toast,setToast] = useState("");
+  const [miniMonth, setMiniMonth] = useState(today.slice(0, 7) + "-01");
+  const [tab, setTab] = useState<"calendar" | "rooms" | "mine">("calendar");
+  const [view, setView] = useState<"week" | "month" | "list">("week");
+  const [data, setData] = useState<Data | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [signIn, setSignIn] = useState(false);
+  const [search, setSearch] = useState("");
+  const [roomFilter, setRoomFilter] = useState<string[]>([]);
+  const [kindFilter, setKindFilter] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [weekends, setWeekends] = useState(false);
+  const [sidebar, setSidebar] = useState(false);
+  const [selected, setSelected] = useState<Booking | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [roomDraft, setRoomDraft] = useState<RoomDraft | null>(null);
+  const [help, setHelp] = useState(false);
+  const [confirm, setConfirm] = useState<{
+    type: "booking" | "room";
+    id: string;
+    name: string;
+  } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [toast, setToast] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
-  const refresh = useCallback(async (silent=false) => {
+  const { panelRef, mainRef } = useNavigationDrawer(sidebar, () =>
+    setSidebar(false),
+  );
+  const refresh = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const response=await fetch("/api/workspace", { cache:"no-store" });
-      const body=await response.json() as Data & { error?: string; signIn?: boolean };
-      if (!response.ok) { setSignIn(!!body.signIn); throw new Error(body.error || "Não foi possível carregar a agenda."); }
-      setData(body); setLoadError(""); setSignIn(false);
-    } catch (error) { if (!silent) setLoadError(error instanceof Error ? error.message : "Não foi possível carregar a agenda."); }
-    finally { if (!silent) setLoading(false); }
+      const response = await fetch("/api/workspace", { cache: "no-store" });
+      const body = (await response.json()) as Data & {
+        error?: string;
+        signIn?: boolean;
+      };
+      if (!response.ok) {
+        setSignIn(!!body.signIn);
+        throw new Error(body.error || "Não foi possível carregar a agenda.");
+      }
+      setData(body);
+      setLoadError("");
+      setSignIn(false);
+    } catch (error) {
+      if (!silent)
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : "Não foi possível carregar a agenda.",
+        );
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, []);
-  useEffect(() => { void refresh(); const interval=setInterval(() => { setNow(new Date()); void refresh(true); },30000); const onFocus=() => void refresh(true); window.addEventListener("focus",onFocus); return () => { clearInterval(interval); window.removeEventListener("focus",onFocus); }; },[refresh]);
-  useEffect(() => { if(!toast) return; const timer=setTimeout(() => setToast(""),5000); return () => clearTimeout(timer); },[toast]);
-  useEffect(() => { const key=(e:KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key === "k") { e.preventDefault(); searchRef.current?.focus(); } }; window.addEventListener("keydown",key); return () => window.removeEventListener("keydown",key); },[]);
-  const rooms=data?.rooms || [];
-  const activeRooms=rooms.filter(r => !!r.active);
-  const events=data?.bookings || [];
-  const filtered=events.filter(e => (!search || `${e.title} ${e.ownerName} ${e.participants} ${rooms.find(r=>r.id===e.roomId)?.name || ""}`.toLocaleLowerCase("pt-BR").includes(search.toLocaleLowerCase("pt-BR"))) && (!roomFilter.length || roomFilter.includes(e.roomId || "online")) && (!kindFilter || e.kind===kindFilter) && (tab!=="mine" || e.ownerId===data?.user.id));
-  const weekStart=monday(anchor);
-  const days=Array.from({length:weekends ? 7:5},(_,i)=>addDays(weekStart,i));
-  const rangeStart=view==="month" ? anchor.slice(0,7)+"-01" : weekStart;
-  const rangeEnd=view==="month" ? addDays(nextMonth(anchor,1),-1) : addDays(weekStart,6);
-  const rangeEvents=filtered.filter(e=>e.date>=rangeStart && e.date<=rangeEnd).sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
-  const weekEvents=events.filter(e=>e.date>=monday(today)&&e.date<=addDays(monday(today),6));
-  const todayEvents=events.filter(e=>e.date===today).sort((a,b)=>a.start.localeCompare(b.start));
-  const busy=(roomId:string)=>events.find(e=>e.roomId===roomId&&e.date===today&&e.start<=currentTime&&e.end>currentTime);
-  const upcoming=events.filter(e=>e.date>today).sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start)).slice(0,4);
-  const roomById=(id:string|null)=>rooms.find(r=>r.id===id);
-  const eventColor=(event:Booking)=>roomById(event.roomId)?.color || (event.kind === "focus" ? "purple" : "green");
-  const eventLocation=(event:Booking)=>bookingLocation(event,rooms);
-  const changeAnchor=(day:string)=> { if([0,6].includes(parseDay(day).getUTCDay())) setWeekends(true); setAnchor(day); setMiniMonth(day.slice(0,7)+"-01"); };
-  const switchTab=(value:typeof tab)=> { setTab(value); setSidebar(false); setSearch(""); if(value==="mine")setView("list"); };
-  const toggleRoom=(id:string)=>setRoomFilter(previous=>previous.includes(id)?previous.filter(r=>r!==id):[...previous,id]);
-  function newBooking(day=anchor,start?:string,roomId="") {
-    if (!start) { if(day===today && minutes(currentTime)<23*60) start=toTime(Math.ceil(minutes(currentTime)/30)*30); else { if(day===today) day=addDays(today,1); start="09:00"; } }
-    setFormError(""); setDraft({ title:"", date:day, start, end:toTime(Math.min(minutes(start)+60,1439)), roomId, kind:roomId?"meeting":"appointment", description:"", participants:"", link:"" });
+  useEffect(() => {
+    void refresh();
+    const interval = setInterval(() => {
+      setNow(new Date());
+      void refresh(true);
+    }, 30000);
+    const onFocus = () => void refresh(true);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [refresh]);
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(""), 5000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, []);
+  const rooms = data?.rooms || [];
+  const activeRooms = rooms.filter((r) => !!r.active);
+  const events = data?.bookings || [];
+  const filtered = events.filter(
+    (e) =>
+      (!search ||
+        `${e.title} ${e.ownerName} ${e.participants} ${rooms.find((r) => r.id === e.roomId)?.name || ""}`
+          .toLocaleLowerCase("pt-BR")
+          .includes(search.toLocaleLowerCase("pt-BR"))) &&
+      (!roomFilter.length || roomFilter.includes(e.roomId || "online")) &&
+      (!kindFilter || e.kind === kindFilter) &&
+      (tab !== "mine" || e.ownerId === data?.user.id),
+  );
+  const weekStart = monday(anchor);
+  const days = Array.from({ length: weekends ? 7 : 5 }, (_, i) =>
+    addDays(weekStart, i),
+  );
+  const rangeStart = view === "month" ? anchor.slice(0, 7) + "-01" : weekStart;
+  const rangeEnd =
+    view === "month"
+      ? addDays(nextMonth(anchor, 1), -1)
+      : addDays(weekStart, 6);
+  const rangeEvents = filtered
+    .filter((e) => e.date >= rangeStart && e.date <= rangeEnd)
+    .sort(
+      (a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start),
+    );
+  const weekEvents = events.filter(
+    (e) => e.date >= monday(today) && e.date <= addDays(monday(today), 6),
+  );
+  const todayEvents = events
+    .filter((e) => e.date === today)
+    .sort((a, b) => a.start.localeCompare(b.start));
+  const busy = (roomId: string) =>
+    events.find(
+      (e) =>
+        e.roomId === roomId &&
+        e.date === today &&
+        e.start <= currentTime &&
+        e.end > currentTime,
+    );
+  const upcoming = events
+    .filter((e) => e.date > today)
+    .sort(
+      (a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start),
+    )
+    .slice(0, 4);
+  const roomById = (id: string | null) => rooms.find((r) => r.id === id);
+  const eventColor = (event: Booking) =>
+    roomById(event.roomId)?.color ||
+    (event.kind === "focus" ? "purple" : "green");
+  const eventLocation = (event: Booking) => bookingLocation(event, rooms);
+  const changeAnchor = (day: string) => {
+    if ([0, 6].includes(parseDay(day).getUTCDay())) setWeekends(true);
+    setAnchor(day);
+    setMiniMonth(day.slice(0, 7) + "-01");
+  };
+  const switchTab = (value: typeof tab) => {
+    setTab(value);
+    setSidebar(false);
+    setSearch("");
+    if (value === "mine") setView("list");
+  };
+  const toggleRoom = (id: string) =>
+    setRoomFilter((previous) =>
+      previous.includes(id)
+        ? previous.filter((r) => r !== id)
+        : [...previous, id],
+    );
+  function newBooking(day = anchor, start?: string, roomId = "") {
+    if (!start) {
+      if (day === today && minutes(currentTime) < 23 * 60)
+        start = toTime(Math.ceil(minutes(currentTime) / 30) * 30);
+      else {
+        if (day === today) day = addDays(today, 1);
+        start = "09:00";
+      }
+    }
+    setSidebar(false);
+    setFormError("");
+    setDraft({
+      title: "",
+      date: day,
+      start,
+      end: toTime(Math.min(minutes(start) + 60, 1439)),
+      roomId,
+      kind: roomId ? "meeting" : "appointment",
+      description: "",
+      participants: "",
+      link: "",
+    });
   }
-  async function mutate(payload:Record<string,unknown>,message:string) {
-    setSaving(true); setFormError("");
-    try { const response=await fetch("/api/workspace",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}); const result=await response.json() as { error?: string }; if(!response.ok) throw new Error(result.error || "Não foi possível salvar."); await refresh(true); setToast(message); return true; }
-    catch(error) { setFormError(error instanceof Error ? error.message : "Não foi possível salvar. Tente novamente."); return false; }
-    finally { setSaving(false); }
+  async function mutate(payload: Record<string, unknown>, message: string) {
+    setSaving(true);
+    setFormError("");
+    try {
+      const response = await fetch("/api/workspace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok)
+        throw new Error(result.error || "Não foi possível salvar.");
+      await refresh(true);
+      setToast(message);
+      return true;
+    } catch (error) {
+      setFormError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível salvar. Tente novamente.",
+      );
+      return false;
+    } finally {
+      setSaving(false);
+    }
   }
-  function editBooking(event:Booking) {
-    setSelected(null); setFormError("");
-    setDraft({id:event.demo?undefined:event.id,title:event.title,date:event.date,start:event.start,end:event.end,roomId:event.roomId||"",kind:event.kind,description:event.demo?"":event.description,participants:event.demo?"":event.participants,link:event.link});
+  function editBooking(event: Booking) {
+    setSelected(null);
+    setFormError("");
+    setDraft({
+      id: event.demo ? undefined : event.id,
+      title: event.title,
+      date: event.date,
+      start: event.start,
+      end: event.end,
+      roomId: event.roomId || "",
+      kind: event.kind,
+      description: event.demo ? "" : event.description,
+      participants: event.demo ? "" : event.participants,
+      link: event.link,
+    });
   }
-  async function copyMeetingLink(url:string) {
-    try { await navigator.clipboard.writeText(url); setToast("Link da reunião copiado."); }
-    catch { setToast("Não foi possível copiar. Você pode selecionar e copiar o endereço da reunião."); }
+  async function copyMeetingLink(url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setToast("Link da reunião copiado.");
+    } catch {
+      setToast(
+        "Não foi possível copiar. Você pode selecionar e copiar o endereço da reunião.",
+      );
+    }
   }
-  const saveBooking=async(e:FormEvent)=> { e.preventDefault(); if(await mutate({action:"saveBooking",...draft},draft?.id?"Compromisso atualizado.":"Compromisso criado na agenda.")) { if(draft) changeAnchor(draft.date); setDraft(null); } };
-  const saveRoom=async(e:FormEvent)=> { e.preventDefault(); if(await mutate({action:"saveRoom",...roomDraft},"Sala salva com sucesso.")) setRoomDraft(null); };
-  function download(eventsToExport=rangeEvents) { if(!eventsToExport.length) { setToast("Não há compromissos neste período para exportar."); return; } const url=URL.createObjectURL(new Blob([createICS(eventsToExport,rooms)],{type:"text/calendar;charset=utf-8"})); const a=document.createElement("a"); a.href=url; a.download="realess-agenda.ics"; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000); setToast("Agenda exportada. Importe o arquivo no Outlook ou Google Agenda."); }
-  const draftConflict=draft&&data?.bookings.find(e=>e.id!==draft.id&&overlaps({...draft,roomId:draft.roomId||null},e));
-  const periodLabel=view==="month" ? fmt(anchor,{month:"long",year:"numeric"}) : `${fmt(weekStart,{day:"2-digit"})} – ${fmt(addDays(weekStart,6),{day:"2-digit",month:"short",year:"numeric"}).replace(" de "," ").replace(" de "," ")}`;
+  const saveBooking = async (e: FormEvent) => {
+    e.preventDefault();
+    if (
+      await mutate(
+        { action: "saveBooking", ...draft },
+        draft?.id ? "Compromisso atualizado." : "Compromisso criado na agenda.",
+      )
+    ) {
+      if (draft) changeAnchor(draft.date);
+      setDraft(null);
+    }
+  };
+  const saveRoom = async (e: FormEvent) => {
+    e.preventDefault();
+    if (
+      await mutate(
+        { action: "saveRoom", ...roomDraft },
+        "Sala salva com sucesso.",
+      )
+    )
+      setRoomDraft(null);
+  };
+  function download(eventsToExport = rangeEvents) {
+    if (!eventsToExport.length) {
+      setToast("Não há compromissos neste período para exportar.");
+      return;
+    }
+    const url = URL.createObjectURL(
+      new Blob([createICS(eventsToExport, rooms)], {
+        type: "text/calendar;charset=utf-8",
+      }),
+    );
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "realess-agenda.ics";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setToast(
+      "Agenda exportada. Importe o arquivo no Outlook ou Google Agenda.",
+    );
+  }
+  const draftConflict =
+    draft &&
+    data?.bookings.find(
+      (e) =>
+        e.id !== draft.id &&
+        overlaps({ ...draft, roomId: draft.roomId || null }, e),
+    );
+  const periodLabel =
+    view === "month"
+      ? fmt(anchor, { month: "long", year: "numeric" })
+      : `${fmt(weekStart, { day: "2-digit" })} – ${fmt(addDays(weekStart, 6), { day: "2-digit", month: "short", year: "numeric" }).replace(" de ", " ").replace(" de ", " ")}`;
 
-  return <div className="app-shell">
-    {sidebar&&<div className="sidebar-overlay" onClick={()=>setSidebar(false)}/>}
-    <aside className={`sidebar ${sidebar?"is-open":""}`}>
-      <a href="/" className="brand" aria-label="Realess início"><img className="brand-logo" src="/realess-logo.png" alt="Realess · Cobranças Empresariais" width={432} height={135}/></a>
-      <div className="workspace-badge"><div className="workspace-icon"><Building2 size={18}/></div><div><strong>Workspace Realess</strong><span>Juntos, no mesmo ritmo</span></div><span className="workspace-online"/></div>
-      <div className="nav-label">SEU ESPAÇO DE TRABALHO</div>
-      <nav aria-label="Navegação principal">
-        <button className={`nav-item ${tab==="calendar"?"active":""}`} onClick={()=>switchTab("calendar")}><CalendarDays size={19}/>Agenda<span className="nav-active-dot"/></button>
-        <button className={`nav-item ${tab==="rooms"?"active":""}`} onClick={()=>switchTab("rooms")}><DoorOpen size={19}/>Salas de reunião<span className="nav-count">{activeRooms.length || "–"}</span></button>
-        <button className={`nav-item ${tab==="mine"?"active":""}`} onClick={()=>switchTab("mine")}><CalendarCheck2 size={19}/>Meus compromissos</button>
-      </nav>
-      <MiniCalendar month={miniMonth} selected={anchor} today={today} events={events} onMonth={setMiniMonth} onSelect={day=>{changeAnchor(day);switchTab("calendar");setSidebar(false);}}/>
-      <div className="nav-label room-nav-label">FILTRAR A AGENDA<button className="sidebar-small-button" aria-label="Adicionar sala" onClick={()=>{setFormError("");setRoomDraft({name:"",capacity:0,location:"",equipment:"",color:"green"});}}><Plus size={15}/></button></div>
-      <div className="room-filters">{activeRooms.map(room=><button key={room.id} className={`room-filter ${roomFilter.includes(room.id)?"checked":""}`} onClick={()=>toggleRoom(room.id)} aria-pressed={roomFilter.includes(room.id)}><span className={`room-check color-${room.color}`}>{(!roomFilter.length||roomFilter.includes(room.id))&&<Check size={10}/>}</span>{room.name}<span className="room-capacity">{room.capacity || ""}</span></button>)}<button className={`room-filter ${roomFilter.includes("online")?"checked":""}`} aria-pressed={roomFilter.includes("online")} onClick={()=>toggleRoom("online")}><span className="room-check color-gray">{(!roomFilter.length||roomFilter.includes("online"))&&<Check size={10}/>}</span>Sem sala de reunião<CalendarDays size={13}/></button></div>
-      <div className="sidebar-bottom"><div className="sidebar-tip"><span className="tip-icon"><Sparkles size={18}/></span><strong>Um dia de cada vez.</strong><p>Organize prioridades e cuide do seu tempo.</p><button onClick={()=>newBooking()}>Adicionar compromisso <ArrowUpRight size={15}/></button></div><button className="help-button" onClick={()=>setHelp(true)}><CircleHelp size={17}/>Ajuda e informações<ArrowUpRight size={14}/></button><div className="sidebar-footer">REALESS <span>FEITO PARA CONECTAR</span></div></div>
-    </aside>
-    <div className="main-shell">
-      <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="Abrir menu" onClick={()=>setSidebar(true)}><Menu size={20}/></button><Building2 size={16}/><span>Workspace</span><span className="breadcrumb-divider">/</span><strong>{tab==="rooms"?"Salas de reunião":tab==="mine"?"Meus compromissos":"Agenda"}</strong></div><div className="topbar-right"><span className="live-status"><span/>Agenda compartilhada</span><span className="topbar-divider"/><button className="icon-button help-top" aria-label="Ajuda" onClick={()=>setHelp(true)}><CircleHelp size={19}/></button><div className="avatar user-avatar" title={data?.user.name || "Sua conta"}>{data?initials(data.user.name):"R"}</div></div></header>
-      <main>
-        <div className="page-heading"><div><div className="eyebrow"><span/> SUA ROTINA, ORGANIZADA</div><h1>{tab==="rooms"?"Salas de reunião":tab==="mine"?"Meus compromissos":"Agenda Realess"}</h1><p>{tab==="rooms"?"Gerencie os espaços da Realess e reserve uma sala quando precisar.":tab==="mine"?"Seus compromissos e reuniões, organizados em um só lugar.":"Organize o dia, acompanhe compromissos e planeje a semana."}</p></div><button className="button button-primary heading-action" disabled={!data} onClick={()=>tab==="rooms"?(setFormError(""),setRoomDraft({name:"",capacity:0,location:"",equipment:"",color:"green"})):newBooking()}><Plus size={18}/>{tab==="rooms"?"Adicionar sala":"Novo compromisso"}</button></div>
-        <div className="stats-grid agenda-stats"><Stat icon={<CalendarDays size={20}/>} label="Compromissos hoje" value={todayEvents.length} note={fmt(today,{weekday:"long",day:"numeric",month:"short"})} color="green"/><Stat icon={<Clock3 size={20}/>} label="Nesta semana" value={weekEvents.length} note="Uma visão dos próximos encontros" color="blue"/><Stat icon={<CalendarCheck2 size={20}/>} label="Meus compromissos" value={weekEvents.filter(e=>e.ownerId===data?.user.id).length} note="Na sua agenda desta semana" color="purple"/></div>
-        {loading?<div className="loading-panel"><LoaderCircle className="spin" size={26}/><h2>Preparando sua agenda…</h2><p>Reunindo os próximos encontros da Realess.</p></div>:loadError?<div className="loading-panel error-panel"><CalendarDays size={34}/><h2>{signIn?"Bem-vindo à agenda da Realess":"Não foi possível abrir a agenda"}</h2><p>{loadError}</p>{signIn?<a className="button button-primary" href="/signin-with-chatgpt?return_to=%2F" target="_top">Entrar para acessar <ArrowRight size={16}/></a>:<button className="button button-primary" onClick={()=>void refresh()}><RefreshCw size={16}/>Tentar novamente</button>}</div>:<>
-          
-          {formError&&!draft&&!roomDraft&&!confirm&&<p role="alert" className="form-error">{formError}</p>}
-          {tab==="rooms"?<><div className="section-heading"><div><h2>Salas de reunião <span className="count-pill">{activeRooms.length}</span></h2><p>Disponibilidade em tempo real · {currentTime}, horário de Brasília</p></div></div><div className="rooms-grid">{activeRooms.map((room,index)=>{const current=busy(room.id);const next=events.filter(e=>e.roomId===room.id&&e.date===today&&e.start>currentTime).sort((a,b)=>a.start.localeCompare(b.start))[0];return <article className={`room-card color-${room.color}`} key={room.id}><div className="room-illustration"><div className="room-plan"><div className="table-top"/>{Array.from({length:Math.min(6,room.capacity)},(_,i)=><span className={`chair chair-${i}`} key={i}/>)}<div className="room-window"/><div className="room-plant"><span/><span/><span/></div></div><span className="room-number">ESPAÇO {String(index+1).padStart(2,"0")}</span><span className={`availability ${current?"occupied":""}`}><span/>{current?"Em uso":"Disponível agora"}</span></div><div className="room-card-body"><div className="room-title"><h3>{room.name}</h3><button className="icon-button" aria-label={`Editar ${room.name}`} onClick={()=>{setFormError("");setRoomDraft(room);}}><Pencil size={16}/></button></div><div className="room-meta"><span><Users size={14}/>{room.capacity ? `${room.capacity} pessoas` : "Capacidade não informada"}</span><span><MapPin size={14}/>{room.location||"Local não informado"}</span></div><div className="equipment-list">{room.equipment.split(",").map(s=>s.trim()).filter(Boolean).map(item=><span key={item}><Check size={11}/>{item}</span>)}</div><div className="room-next"><Clock3 size={14}/><span>{current?`Em uso até ${current.end}`:next?`Próxima reserva às ${next.start}`:"Sem outras reservas hoje"}</span></div><button className="button room-book-button" onClick={()=>newBooking(today, current?.end || undefined,room.id)}>Reservar sala<ArrowUpRight size={16}/></button></div></article>;})}<button className="add-room-card" onClick={()=>{setFormError("");setRoomDraft({name:"",capacity:0,location:"",equipment:"",color:"green"});}}><span><Plus size={24}/></span><strong>Um novo espaço</strong><p>Cadastre uma sala para a equipe.</p></button></div></>:<div className="content-grid"><section className="calendar-card" aria-label="Agenda de compromissos"><div className="calendar-toolbar"><div className="calendar-title"><h2>{fmt(anchor,{month:"long",year:"numeric"}).replace(" de "," ")}</h2><div className="calendar-arrows"><button className="icon-button" aria-label="Período anterior" onClick={()=>changeAnchor(view==="month"?nextMonth(anchor,-1):addDays(anchor,-7))}><ChevronLeft size={17}/></button><button className="icon-button" aria-label="Próximo período" onClick={()=>changeAnchor(view==="month"?nextMonth(anchor,1):addDays(anchor,7))}><ChevronRight size={17}/></button></div><button className="today-button" onClick={()=>changeAnchor(today)}>Hoje</button></div><div className="view-toggle" aria-label="Visualização do calendário">{([["week","Semana",CalendarDays],["month","Mês",LayoutGrid],["list","Lista",List]] as const).map(([key,label,Icon])=><button key={key} aria-pressed={view===key} className={view===key?"selected":""} onClick={()=>setView(key)}><Icon size={14}/>{label}</button>)}</div></div><div className="calendar-subtoolbar"><label className="search-field"><Search size={16}/><input ref={searchRef} placeholder="Buscar na agenda..." aria-label="Buscar na agenda" value={search} onChange={e=>setSearch(e.target.value)}/><kbd>Ctrl K</kbd></label><div className="calendar-tools"><button aria-expanded={filtersOpen} className={`text-button ${roomFilter.length||kindFilter?"has-filter":""}`} onClick={()=>setFiltersOpen(!filtersOpen)}><SlidersHorizontal size={15}/><span>Filtros</span>{!!(roomFilter.length||kindFilter)&&<span className="filter-count">{roomFilter.length+(kindFilter?1:0)}</span>}</button><span className="tool-divider"/><button className="icon-button" aria-label="Exportar calendário" title="Exportar calendário (.ics)" onClick={()=>download()}><Download size={16}/></button></div></div>
-            {!events.length&&<div className="agenda-welcome"><CalendarDays size={17}/><span><strong>Sua agenda está pronta.</strong> Adicione o primeiro compromisso para organizar sua semana.</span></div>}
-            {filtersOpen&&<div className="filter-panel"><label>Tipo de encontro<select value={kindFilter} onChange={e=>setKindFilter(e.target.value)}><option value="">Todos os tipos</option>{Object.entries(kinds).map(([key,label])=><option value={key} key={key}>{label}</option>)}</select></label><label className="checkbox-label"><input type="checkbox" checked={weekends} onChange={e=>setWeekends(e.target.checked)}/>Exibir fim de semana</label><button className="text-button" onClick={()=>{setRoomFilter([]);setKindFilter("");setSearch("");}}>Limpar filtros</button></div>}
-            {view==="week"?<WeekView days={days} today={today} events={filtered} currentTime={currentTime} eventColor={eventColor} eventLocation={eventLocation} onEvent={e=>{setFormError("");setSelected(e);}} onSlot={newBooking}/>:view==="month"?<MonthView anchor={anchor} today={today} events={filtered} eventColor={eventColor} onEvent={setSelected} onDay={day=>{changeAnchor(day);setView("week");}}/>:<div className="agenda-list"><div className="list-period">{periodLabel}<span>{rangeEvents.length} compromissos</span></div>{rangeEvents.length?rangeEvents.map(e=><button className="agenda-row" key={e.id} onClick={()=>setSelected(e)}><div className="agenda-date"><strong>{fmt(e.date,{day:"2-digit"})}</strong><span>{fmt(e.date,{weekday:"short"})}</span></div><span className={`agenda-dot color-${eventColor(e)}`}/><div className="agenda-row-title"><strong>{e.title}</strong><span>{eventLocation(e)} · {e.ownerName}</span></div><span className="agenda-row-time">{e.start} – {e.end}</span><ChevronRight size={16}/></button>):<EmptyState onCreate={()=>newBooking()} filtered={!!(search||roomFilter.length||kindFilter)} mine={tab==="mine"}/>}</div>}
-            <footer className="calendar-footer"><span><span className="footer-dot"/>{rangeEvents.length} compromissos no período</span><span>GMT−3 · São Paulo</span></footer>
-          </section><aside className="daily-panel"><section className="today-card"><div className="today-card-heading"><div><span className="eyebrow">UM OLHAR PARA HOJE</span><h2>{fmt(today,{day:"numeric",month:"long"})}</h2></div><span className="today-count">{todayEvents.length}</span></div><div className="today-agenda">{todayEvents.length?todayEvents.map(e=><button className={`today-event ${e.end<=currentTime?"event-past":""}`} key={e.id} onClick={()=>{setFormError("");setSelected(e);}}><span className={`timeline-dot color-${eventColor(e)}`}/><span className="today-event-content"><span className="today-event-time">{e.start} – {e.end}{e.start<=currentTime&&e.end>currentTime&&<span className="now-label">Agora</span>}</span><strong>{e.title}</strong><span className="today-event-room">{e.roomId?<DoorOpen size={12}/>:(e.link||e.kind==="online")?<Video size={12}/>:<CalendarDays size={12}/>}{eventLocation(e)}</span><span className="today-event-owner"><span className="tiny-avatar">{initials(e.ownerName)}</span>{e.ownerName}</span></span><ChevronRight size={14}/></button>):<div className="today-empty"><CalendarCheck2 size={27}/><strong>Um dia cheio de possibilidades.</strong><p>Adicione seus compromissos e organize o dia.</p><button className="text-button" onClick={()=>newBooking(today)}>Criar compromisso <Plus size={14}/></button></div>}</div><button className="see-all" onClick={()=>{changeAnchor(today);setView("list");}}>Ver agenda da semana<ArrowRight size={15}/></button></section>
-            <section className="upcoming-card"><div className="small-section-title"><h2>Nos próximos dias</h2><CalendarDays size={17}/></div><p>O que vem pela frente na sua agenda.</p><div className="upcoming-list">{upcoming.length?upcoming.map(event=><button key={event.id} className="upcoming-event" onClick={()=>{setFormError("");setSelected(event);}}><span className="upcoming-date"><strong>{fmt(event.date,{day:"2-digit"})}</strong><small>{fmt(event.date,{month:"short"}).replace(".","")}</small></span><span className="upcoming-info"><strong>{event.title}</strong><small>{event.start} – {event.end}</small><small>{eventLocation(event)}</small></span><span className={`upcoming-dot color-${eventColor(event)}`}/></button>):<div className="upcoming-empty"><p>Sem compromissos para os próximos dias.</p><button className="text-button" onClick={()=>newBooking(addDays(today,1))}>Planejar um compromisso <Plus size={13}/></button></div>}</div>{!!upcoming.length&&<button className="see-all" onClick={()=>{switchTab("calendar");changeAnchor(upcoming[0].date);setView("list");}}>Ver próximos compromissos<ArrowRight size={15}/></button>}</section><button className="agenda-room-shortcut" onClick={()=>switchTab("rooms")}><span><DoorOpen size={18}/></span><div><strong>{activeRooms.length} salas de reunião</strong><small>Gerenciar espaços da Realess</small></div><ChevronRight size={16}/></button><div className="quiet-note"><span className="quiet-note-symbol">✳</span><p>Um dia organizado.<br/><strong>Uma semana mais leve.</strong></p><span className="quiet-note-decoration"/></div>
-          </aside></div>}
-        </>}
-        <footer className="page-footer"><span>Um lugar para fazer acontecer. <strong>Realess.</strong></span><span><span className="live-dot"/>{loading?"Conectando…":loadError?"Aguardando conexão":"Atualiza a cada 30 segundos"}</span></footer>
-      </main>
+  return (
+    <div className="app-shell">
+      <a className="skip-link" href="#main-content">
+        Ir para a agenda
+      </a>
+      {sidebar && (
+        <div
+          className="sidebar-overlay"
+          aria-hidden="true"
+          onClick={() => setSidebar(false)}
+        />
+      )}
+      <aside
+        ref={panelRef}
+        id="main-navigation"
+        className={`sidebar ${sidebar ? "is-open" : ""}`}
+        aria-label="Menu principal"
+        role={sidebar ? "dialog" : undefined}
+        aria-modal={sidebar ? true : undefined}
+      >
+        <div className="drawer-header">
+          <strong>Menu Realess</strong>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Fechar menu"
+            onClick={() => setSidebar(false)}
+          >
+            <X size={20} />
+          </button>
+        </div>
+        <a href="/" className="brand" aria-label="Realess início">
+          <img
+            className="brand-logo"
+            src="/realess-logo.png"
+            alt="Realess · Cobranças Empresariais"
+            width={432}
+            height={135}
+          />
+        </a>
+        <div className="workspace-badge">
+          <div className="workspace-icon">
+            <Building2 size={18} />
+          </div>
+          <div>
+            <strong>Workspace Realess</strong>
+            <span>Juntos, no mesmo ritmo</span>
+          </div>
+          <span className="workspace-online" />
+        </div>
+        <div className="nav-label">SEU ESPAÇO DE TRABALHO</div>
+        <nav aria-label="Navegação principal">
+          <button
+            className={`nav-item ${tab === "calendar" ? "active" : ""}`}
+            onClick={() => switchTab("calendar")}
+          >
+            <CalendarDays size={19} />
+            Agenda
+            <span className="nav-active-dot" />
+          </button>
+          <button
+            className={`nav-item ${tab === "rooms" ? "active" : ""}`}
+            onClick={() => switchTab("rooms")}
+          >
+            <DoorOpen size={19} />
+            Salas de reunião
+            <span className="nav-count">{activeRooms.length || "–"}</span>
+          </button>
+          <button
+            className={`nav-item ${tab === "mine" ? "active" : ""}`}
+            onClick={() => switchTab("mine")}
+          >
+            <CalendarCheck2 size={19} />
+            Meus compromissos
+          </button>
+        </nav>
+        <MiniCalendar
+          month={miniMonth}
+          selected={anchor}
+          today={today}
+          events={events}
+          onMonth={setMiniMonth}
+          onSelect={(day) => {
+            changeAnchor(day);
+            setTab("calendar");
+            setSearch("");
+          }}
+        />
+        <div className="nav-label room-nav-label">
+          FILTRAR A AGENDA
+          <button
+            className="sidebar-small-button"
+            aria-label="Adicionar sala"
+            onClick={() => {
+              setSidebar(false);
+              setFormError("");
+              setRoomDraft({
+                name: "",
+                capacity: 0,
+                location: "",
+                equipment: "",
+                color: "green",
+              });
+            }}
+          >
+            <Plus size={15} />
+          </button>
+        </div>
+        <div className="room-filters">
+          {activeRooms.map((room) => (
+            <button
+              key={room.id}
+              className={`room-filter ${roomFilter.includes(room.id) ? "checked" : ""}`}
+              onClick={() => toggleRoom(room.id)}
+              aria-pressed={roomFilter.includes(room.id)}
+            >
+              <span className={`room-check color-${room.color}`}>
+                {(!roomFilter.length || roomFilter.includes(room.id)) && (
+                  <Check size={10} />
+                )}
+              </span>
+              {room.name}
+              <span className="room-capacity">{room.capacity || ""}</span>
+            </button>
+          ))}
+          <button
+            className={`room-filter ${roomFilter.includes("online") ? "checked" : ""}`}
+            aria-pressed={roomFilter.includes("online")}
+            onClick={() => toggleRoom("online")}
+          >
+            <span className="room-check color-gray">
+              {(!roomFilter.length || roomFilter.includes("online")) && (
+                <Check size={10} />
+              )}
+            </span>
+            Sem sala de reunião
+            <CalendarDays size={13} />
+          </button>
+        </div>
+        <div className="sidebar-bottom">
+          <div className="sidebar-tip">
+            <span className="tip-icon">
+              <Sparkles size={18} />
+            </span>
+            <strong>Um dia de cada vez.</strong>
+            <p>Organize prioridades e cuide do seu tempo.</p>
+            <button onClick={() => newBooking()}>
+              Adicionar compromisso <ArrowUpRight size={15} />
+            </button>
+          </div>
+          <button
+            className="help-button"
+            onClick={() => {
+              setSidebar(false);
+              setHelp(true);
+            }}
+          >
+            <CircleHelp size={17} />
+            Ajuda e informações
+            <ArrowUpRight size={14} />
+          </button>
+          <div className="sidebar-footer">
+            REALESS <span>FEITO PARA CONECTAR</span>
+          </div>
+        </div>
+      </aside>
+      <div className="main-shell" ref={mainRef}>
+        <header className="topbar">
+          <div className="breadcrumb">
+            <button
+              className="icon-button mobile-menu"
+              aria-label="Abrir menu"
+              aria-expanded={sidebar}
+              aria-controls="main-navigation"
+              onClick={() => setSidebar(true)}
+            >
+              <Menu size={20} />
+            </button>
+            <Building2 size={16} />
+            <span className="breadcrumb-workspace">Workspace</span>
+            <span className="breadcrumb-divider">/</span>
+            <strong>
+              {tab === "rooms"
+                ? "Salas de reunião"
+                : tab === "mine"
+                  ? "Meus compromissos"
+                  : "Agenda"}
+            </strong>
+          </div>
+          <div className="topbar-right">
+            <span className="live-status">
+              <span />
+              Agenda compartilhada
+            </span>
+            <span className="topbar-divider" />
+            <button
+              className="icon-button help-top"
+              aria-label="Ajuda"
+              onClick={() => setHelp(true)}
+            >
+              <CircleHelp size={19} />
+            </button>
+            <div
+              className="avatar user-avatar"
+              title={data?.user.name || "Sua conta"}
+            >
+              {data ? initials(data.user.name) : "R"}
+            </div>
+          </div>
+        </header>
+        <main id="main-content">
+          <div className="page-heading">
+            <div>
+              <div className="eyebrow">
+                <span /> SUA ROTINA, ORGANIZADA
+              </div>
+              <h1>
+                {tab === "rooms"
+                  ? "Salas de reunião"
+                  : tab === "mine"
+                    ? "Meus compromissos"
+                    : "Agenda Realess"}
+              </h1>
+              <p>
+                {tab === "rooms"
+                  ? "Gerencie os espaços da Realess e reserve uma sala quando precisar."
+                  : tab === "mine"
+                    ? "Seus compromissos e reuniões, organizados em um só lugar."
+                    : "Organize o dia, acompanhe compromissos e planeje a semana."}
+              </p>
+            </div>
+            <button
+              className="button button-primary heading-action"
+              disabled={!data}
+              onClick={() =>
+                tab === "rooms"
+                  ? (setFormError(""),
+                    setRoomDraft({
+                      name: "",
+                      capacity: 0,
+                      location: "",
+                      equipment: "",
+                      color: "green",
+                    }))
+                  : newBooking()
+              }
+            >
+              <Plus size={18} />
+              {tab === "rooms" ? "Adicionar sala" : "Novo compromisso"}
+            </button>
+          </div>
+          <div className="stats-grid agenda-stats">
+            <Stat
+              icon={<CalendarDays size={20} />}
+              label="Compromissos hoje"
+              value={todayEvents.length}
+              note={fmt(today, {
+                weekday: "long",
+                day: "numeric",
+                month: "short",
+              })}
+              color="green"
+            />
+            <Stat
+              icon={<Clock3 size={20} />}
+              label="Nesta semana"
+              value={weekEvents.length}
+              note="Uma visão dos próximos encontros"
+              color="blue"
+            />
+            <Stat
+              icon={<CalendarCheck2 size={20} />}
+              label="Meus compromissos"
+              value={
+                weekEvents.filter((e) => e.ownerId === data?.user.id).length
+              }
+              note="Na sua agenda desta semana"
+              color="purple"
+            />
+          </div>
+          {loading ? (
+            <div className="loading-panel">
+              <LoaderCircle className="spin" size={26} />
+              <h2>Preparando sua agenda…</h2>
+              <p>Reunindo os próximos encontros da Realess.</p>
+            </div>
+          ) : loadError ? (
+            <div className="loading-panel error-panel">
+              <CalendarDays size={34} />
+              <h2>
+                {signIn
+                  ? "Bem-vindo à agenda da Realess"
+                  : "Não foi possível abrir a agenda"}
+              </h2>
+              <p>{loadError}</p>
+              {signIn ? (
+                <a
+                  className="button button-primary"
+                  href="/signin-with-chatgpt?return_to=%2F"
+                  target="_top"
+                >
+                  Entrar para acessar <ArrowRight size={16} />
+                </a>
+              ) : (
+                <button
+                  className="button button-primary"
+                  onClick={() => void refresh()}
+                >
+                  <RefreshCw size={16} />
+                  Tentar novamente
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              {formError && !draft && !roomDraft && !confirm && (
+                <p role="alert" className="form-error">
+                  {formError}
+                </p>
+              )}
+              {tab === "rooms" ? (
+                <>
+                  <div className="section-heading">
+                    <div>
+                      <h2>
+                        Salas de reunião{" "}
+                        <span className="count-pill">{activeRooms.length}</span>
+                      </h2>
+                      <p>
+                        Disponibilidade em tempo real · {currentTime}, horário
+                        de Brasília
+                      </p>
+                    </div>
+                  </div>
+                  <div className="rooms-grid">
+                    {activeRooms.map((room, index) => {
+                      const current = busy(room.id);
+                      const next = events
+                        .filter(
+                          (e) =>
+                            e.roomId === room.id &&
+                            e.date === today &&
+                            e.start > currentTime,
+                        )
+                        .sort((a, b) => a.start.localeCompare(b.start))[0];
+                      return (
+                        <article
+                          className={`room-card color-${room.color}`}
+                          key={room.id}
+                        >
+                          <div className="room-illustration">
+                            <div className="room-plan">
+                              <div className="table-top" />
+                              {Array.from(
+                                { length: Math.min(6, room.capacity) },
+                                (_, i) => (
+                                  <span
+                                    className={`chair chair-${i}`}
+                                    key={i}
+                                  />
+                                ),
+                              )}
+                              <div className="room-window" />
+                              <div className="room-plant">
+                                <span />
+                                <span />
+                                <span />
+                              </div>
+                            </div>
+                            <span className="room-number">
+                              ESPAÇO {String(index + 1).padStart(2, "0")}
+                            </span>
+                            <span
+                              className={`availability ${current ? "occupied" : ""}`}
+                            >
+                              <span />
+                              {current ? "Em uso" : "Disponível agora"}
+                            </span>
+                          </div>
+                          <div className="room-card-body">
+                            <div className="room-title">
+                              <h3>{room.name}</h3>
+                              <button
+                                className="icon-button"
+                                aria-label={`Editar ${room.name}`}
+                                onClick={() => {
+                                  setFormError("");
+                                  setRoomDraft(room);
+                                }}
+                              >
+                                <Pencil size={16} />
+                              </button>
+                            </div>
+                            <div className="room-meta">
+                              <span>
+                                <Users size={14} />
+                                {room.capacity
+                                  ? `${room.capacity} pessoas`
+                                  : "Capacidade não informada"}
+                              </span>
+                              <span>
+                                <MapPin size={14} />
+                                {room.location || "Local não informado"}
+                              </span>
+                            </div>
+                            <div className="equipment-list">
+                              {room.equipment
+                                .split(",")
+                                .map((s) => s.trim())
+                                .filter(Boolean)
+                                .map((item) => (
+                                  <span key={item}>
+                                    <Check size={11} />
+                                    {item}
+                                  </span>
+                                ))}
+                            </div>
+                            <div className="room-next">
+                              <Clock3 size={14} />
+                              <span>
+                                {current
+                                  ? `Em uso até ${current.end}`
+                                  : next
+                                    ? `Próxima reserva às ${next.start}`
+                                    : "Sem outras reservas hoje"}
+                              </span>
+                            </div>
+                            <button
+                              className="button room-book-button"
+                              onClick={() =>
+                                newBooking(
+                                  today,
+                                  current?.end || undefined,
+                                  room.id,
+                                )
+                              }
+                            >
+                              Reservar sala
+                              <ArrowUpRight size={16} />
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                    <button
+                      className="add-room-card"
+                      onClick={() => {
+                        setFormError("");
+                        setRoomDraft({
+                          name: "",
+                          capacity: 0,
+                          location: "",
+                          equipment: "",
+                          color: "green",
+                        });
+                      }}
+                    >
+                      <span>
+                        <Plus size={24} />
+                      </span>
+                      <strong>Um novo espaço</strong>
+                      <p>Cadastre uma sala para a equipe.</p>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="content-grid">
+                  <section
+                    className="calendar-card"
+                    aria-label="Agenda de compromissos"
+                  >
+                    <div className="calendar-toolbar">
+                      <div className="calendar-title">
+                        <h2>
+                          {fmt(anchor, {
+                            month: "long",
+                            year: "numeric",
+                          }).replace(" de ", " ")}
+                        </h2>
+                        <div className="calendar-arrows">
+                          <button
+                            className="icon-button"
+                            aria-label="Período anterior"
+                            onClick={() =>
+                              changeAnchor(
+                                view === "month"
+                                  ? nextMonth(anchor, -1)
+                                  : addDays(anchor, -7),
+                              )
+                            }
+                          >
+                            <ChevronLeft size={17} />
+                          </button>
+                          <button
+                            className="icon-button"
+                            aria-label="Próximo período"
+                            onClick={() =>
+                              changeAnchor(
+                                view === "month"
+                                  ? nextMonth(anchor, 1)
+                                  : addDays(anchor, 7),
+                              )
+                            }
+                          >
+                            <ChevronRight size={17} />
+                          </button>
+                        </div>
+                        <button
+                          className="today-button"
+                          onClick={() => changeAnchor(today)}
+                        >
+                          Hoje
+                        </button>
+                      </div>
+                      <div
+                        className="view-toggle"
+                        role="group"
+                        aria-label="Visualização do calendário"
+                      >
+                        {(
+                          [
+                            ["week", "Semana", CalendarDays],
+                            ["month", "Mês", LayoutGrid],
+                            ["list", "Lista", List],
+                          ] as const
+                        ).map(([key, label, Icon]) => (
+                          <button
+                            key={key}
+                            aria-pressed={view === key}
+                            className={view === key ? "selected" : ""}
+                            onClick={() => setView(key)}
+                          >
+                            <Icon size={14} />
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="calendar-subtoolbar">
+                      <label className="search-field">
+                        <Search size={16} />
+                        <input
+                          ref={searchRef}
+                          placeholder="Buscar na agenda..."
+                          aria-label="Buscar na agenda"
+                          value={search}
+                          onChange={(e) => setSearch(e.target.value)}
+                        />
+                        <kbd>Ctrl K</kbd>
+                      </label>
+                      <div className="calendar-tools">
+                        <button
+                          aria-label="Filtros da agenda"
+                          aria-controls="agenda-filters"
+                          aria-expanded={filtersOpen}
+                          className={`text-button ${roomFilter.length || kindFilter ? "has-filter" : ""}`}
+                          onClick={() => setFiltersOpen(!filtersOpen)}
+                        >
+                          <SlidersHorizontal size={15} />
+                          <span>Filtros</span>
+                          {!!(roomFilter.length || kindFilter) && (
+                            <span className="filter-count">
+                              {roomFilter.length + (kindFilter ? 1 : 0)}
+                            </span>
+                          )}
+                        </button>
+                        <span className="tool-divider" />
+                        <button
+                          className="icon-button"
+                          aria-label="Exportar calendário"
+                          title="Exportar calendário (.ics)"
+                          onClick={() => download()}
+                        >
+                          <Download size={16} />
+                        </button>
+                      </div>
+                    </div>
+                    {!events.length && (
+                      <div className="agenda-welcome">
+                        <CalendarDays size={17} />
+                        <span>
+                          <strong>Sua agenda está pronta.</strong> Adicione o
+                          primeiro compromisso para organizar sua semana.
+                        </span>
+                      </div>
+                    )}
+                    {filtersOpen && (
+                      <div className="filter-panel" id="agenda-filters">
+                        <fieldset className="inline-room-filters">
+                          <legend>Salas de reunião</legend>
+                          {activeRooms.map((room) => (
+                            <button
+                              type="button"
+                              key={room.id}
+                              className={`filter-chip ${roomFilter.includes(room.id) ? "checked" : ""}`}
+                              aria-pressed={roomFilter.includes(room.id)}
+                              onClick={() => toggleRoom(room.id)}
+                            >
+                              {roomFilter.includes(room.id) && (
+                                <Check size={14} />
+                              )}{" "}
+                              {room.name}
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            className={`filter-chip ${roomFilter.includes("online") ? "checked" : ""}`}
+                            aria-pressed={roomFilter.includes("online")}
+                            onClick={() => toggleRoom("online")}
+                          >
+                            Sem sala de reunião
+                          </button>
+                        </fieldset>
+                        <label>
+                          Tipo de encontro
+                          <select
+                            value={kindFilter}
+                            onChange={(e) => setKindFilter(e.target.value)}
+                          >
+                            <option value="">Todos os tipos</option>
+                            {Object.entries(kinds).map(([key, label]) => (
+                              <option value={key} key={key}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="checkbox-label">
+                          <input
+                            type="checkbox"
+                            checked={weekends}
+                            onChange={(e) => setWeekends(e.target.checked)}
+                          />
+                          Exibir fim de semana
+                        </label>
+                        <button
+                          className="text-button"
+                          onClick={() => {
+                            setRoomFilter([]);
+                            setKindFilter("");
+                            setSearch("");
+                          }}
+                        >
+                          Limpar filtros
+                        </button>
+                      </div>
+                    )}
+                    {view === "week" ? (
+                      <WeekView
+                        days={days}
+                        today={today}
+                        events={filtered}
+                        currentTime={currentTime}
+                        eventColor={eventColor}
+                        eventLocation={eventLocation}
+                        onEvent={(e) => {
+                          setFormError("");
+                          setSelected(e);
+                        }}
+                        onSlot={newBooking}
+                      />
+                    ) : view === "month" ? (
+                      <MonthView
+                        anchor={anchor}
+                        today={today}
+                        events={filtered}
+                        eventColor={eventColor}
+                        eventLocation={eventLocation}
+                        onEvent={setSelected}
+                        onDay={changeAnchor}
+                        onCreate={newBooking}
+                      />
+                    ) : (
+                      <div className="agenda-list">
+                        <div className="list-period">
+                          {periodLabel}
+                          <span>{rangeEvents.length} compromissos</span>
+                        </div>
+                        {rangeEvents.length ? (
+                          rangeEvents.map((e) => (
+                            <button
+                              className="agenda-row"
+                              key={e.id}
+                              onClick={() => setSelected(e)}
+                            >
+                              <div className="agenda-date">
+                                <strong>
+                                  {fmt(e.date, { day: "2-digit" })}
+                                </strong>
+                                <span>{fmt(e.date, { weekday: "short" })}</span>
+                              </div>
+                              <span
+                                className={`agenda-dot color-${eventColor(e)}`}
+                              />
+                              <div className="agenda-row-title">
+                                <strong>{e.title}</strong>
+                                <span>
+                                  {eventLocation(e)} · {e.ownerName}
+                                </span>
+                              </div>
+                              <span className="agenda-row-time">
+                                {e.start} – {e.end}
+                              </span>
+                              <ChevronRight size={16} />
+                            </button>
+                          ))
+                        ) : (
+                          <EmptyState
+                            onCreate={() => newBooking()}
+                            filtered={
+                              !!(search || roomFilter.length || kindFilter)
+                            }
+                            mine={tab === "mine"}
+                          />
+                        )}
+                      </div>
+                    )}
+                    <footer className="calendar-footer">
+                      <span>
+                        <span className="footer-dot" />
+                        {rangeEvents.length} compromissos no período
+                      </span>
+                      <span>GMT−3 · São Paulo</span>
+                    </footer>
+                  </section>
+                  <aside className="daily-panel">
+                    <section className="today-card">
+                      <div className="today-card-heading">
+                        <div>
+                          <span className="eyebrow">UM OLHAR PARA HOJE</span>
+                          <h2>
+                            {fmt(today, { day: "numeric", month: "long" })}
+                          </h2>
+                        </div>
+                        <span className="today-count">
+                          {todayEvents.length}
+                        </span>
+                      </div>
+                      <div
+                        className="today-agenda"
+                        tabIndex={0}
+                        role="region"
+                        aria-label="Compromissos de hoje"
+                      >
+                        {todayEvents.length ? (
+                          todayEvents.map((e) => (
+                            <button
+                              className={`today-event ${e.end <= currentTime ? "event-past" : ""}`}
+                              key={e.id}
+                              onClick={() => {
+                                setFormError("");
+                                setSelected(e);
+                              }}
+                            >
+                              <span
+                                className={`timeline-dot color-${eventColor(e)}`}
+                              />
+                              <span className="today-event-content">
+                                <span className="today-event-time">
+                                  {e.start} – {e.end}
+                                  {e.start <= currentTime &&
+                                    e.end > currentTime && (
+                                      <span className="now-label">Agora</span>
+                                    )}
+                                </span>
+                                <strong>{e.title}</strong>
+                                <span className="today-event-room">
+                                  {e.roomId ? (
+                                    <DoorOpen size={12} />
+                                  ) : e.link || e.kind === "online" ? (
+                                    <Video size={12} />
+                                  ) : (
+                                    <CalendarDays size={12} />
+                                  )}
+                                  {eventLocation(e)}
+                                </span>
+                                <span className="today-event-owner">
+                                  <span className="tiny-avatar">
+                                    {initials(e.ownerName)}
+                                  </span>
+                                  {e.ownerName}
+                                </span>
+                              </span>
+                              <ChevronRight size={14} />
+                            </button>
+                          ))
+                        ) : (
+                          <div className="today-empty">
+                            <CalendarCheck2 size={27} />
+                            <strong>Um dia cheio de possibilidades.</strong>
+                            <p>Adicione seus compromissos e organize o dia.</p>
+                            <button
+                              className="text-button"
+                              onClick={() => newBooking(today)}
+                            >
+                              Criar compromisso <Plus size={14} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        className="see-all"
+                        onClick={() => {
+                          changeAnchor(today);
+                          setView("list");
+                        }}
+                      >
+                        Ver agenda da semana
+                        <ArrowRight size={15} />
+                      </button>
+                    </section>
+                    <section className="upcoming-card">
+                      <div className="small-section-title">
+                        <h2>Nos próximos dias</h2>
+                        <CalendarDays size={17} />
+                      </div>
+                      <p>O que vem pela frente na sua agenda.</p>
+                      <div className="upcoming-list">
+                        {upcoming.length ? (
+                          upcoming.map((event) => (
+                            <button
+                              key={event.id}
+                              className="upcoming-event"
+                              onClick={() => {
+                                setFormError("");
+                                setSelected(event);
+                              }}
+                            >
+                              <span className="upcoming-date">
+                                <strong>
+                                  {fmt(event.date, { day: "2-digit" })}
+                                </strong>
+                                <small>
+                                  {fmt(event.date, { month: "short" }).replace(
+                                    ".",
+                                    "",
+                                  )}
+                                </small>
+                              </span>
+                              <span className="upcoming-info">
+                                <strong>{event.title}</strong>
+                                <small>
+                                  {event.start} – {event.end}
+                                </small>
+                                <small>{eventLocation(event)}</small>
+                              </span>
+                              <span
+                                className={`upcoming-dot color-${eventColor(event)}`}
+                              />
+                            </button>
+                          ))
+                        ) : (
+                          <div className="upcoming-empty">
+                            <p>Sem compromissos para os próximos dias.</p>
+                            <button
+                              className="text-button"
+                              onClick={() => newBooking(addDays(today, 1))}
+                            >
+                              Planejar um compromisso <Plus size={13} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {!!upcoming.length && (
+                        <button
+                          className="see-all"
+                          onClick={() => {
+                            switchTab("calendar");
+                            changeAnchor(upcoming[0].date);
+                            setView("list");
+                          }}
+                        >
+                          Ver próximos compromissos
+                          <ArrowRight size={15} />
+                        </button>
+                      )}
+                    </section>
+                    <button
+                      className="agenda-room-shortcut"
+                      onClick={() => switchTab("rooms")}
+                    >
+                      <span>
+                        <DoorOpen size={18} />
+                      </span>
+                      <div>
+                        <strong>{activeRooms.length} salas de reunião</strong>
+                        <small>Gerenciar espaços da Realess</small>
+                      </div>
+                      <ChevronRight size={16} />
+                    </button>
+                    <div className="quiet-note">
+                      <span className="quiet-note-symbol">✳</span>
+                      <p>
+                        Um dia organizado.
+                        <br />
+                        <strong>Uma semana mais leve.</strong>
+                      </p>
+                      <span className="quiet-note-decoration" />
+                    </div>
+                  </aside>
+                </div>
+              )}
+            </>
+          )}
+          <footer className="page-footer">
+            <span>
+              Um lugar para fazer acontecer. <strong>Realess.</strong>
+            </span>
+            <span>
+              <span className="live-dot" />
+              {loading
+                ? "Conectando…"
+                : loadError
+                  ? "Aguardando conexão"
+                  : "Atualiza a cada 30 segundos"}
+            </span>
+          </footer>
+        </main>
+      </div>
+      {toast && (
+        <div role="status" className="toast">
+          <CheckCircle2 size={19} />
+          {toast}
+          <button aria-label="Dispensar mensagem" onClick={() => setToast("")}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
+      {selected && (
+        <Modal
+          title={selected.title}
+          subtitle={
+            selected.demo
+              ? "Agendamento ilustrativo"
+              : "Detalhes do compromisso"
+          }
+          onClose={() => setSelected(null)}
+        >
+          <div className="event-detail">
+            <span className={`detail-kind color-${eventColor(selected)}`}>
+              {kinds[selected.kind] || "Reunião"}
+            </span>
+            <MeetingLinkDetail
+              value={selected.link}
+              onCopy={copyMeetingLink}
+              onAddLink={
+                selected.demo || selected.ownerId === data?.user.id
+                  ? () => editBooking(selected)
+                  : undefined
+              }
+            />
+            <div className="detail-row">
+              <CalendarDays size={20} />
+              <div>
+                <strong>
+                  {fmt(selected.date, {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </strong>
+                <span>
+                  {selected.start} – {selected.end} · horário de Brasília
+                </span>
+              </div>
+            </div>
+            <div className="detail-row">
+              {selected.roomId ? (
+                <DoorOpen size={20} />
+              ) : selected.link || selected.kind === "online" ? (
+                <Video size={20} />
+              ) : (
+                <CalendarDays size={20} />
+              )}
+              <div>
+                <strong>{eventLocation(selected)}</strong>
+                <span>
+                  {selected.roomId
+                    ? roomById(selected.roomId)?.location ||
+                      "Sala reservada para este compromisso."
+                    : "Este compromisso não reserva uma sala."}
+                </span>
+              </div>
+            </div>
+            <div className="detail-row">
+              <Users size={20} />
+              <div>
+                <strong>{selected.ownerName}</strong>
+                <span>
+                  Organizador
+                  {selected.participants ? ` · ${selected.participants}` : ""}
+                </span>
+              </div>
+            </div>
+            {selected.description && (
+              <p className="detail-description">{selected.description}</p>
+            )}
+          </div>
+          <div className="modal-actions detail-actions">
+            <button
+              className="button button-secondary"
+              onClick={() => download([selected])}
+            >
+              <Download size={15} />
+              Exportar
+            </button>
+            {(selected.demo || selected.ownerId === data?.user.id) && (
+              <>
+                <button
+                  className="button button-primary"
+                  onClick={() => editBooking(selected)}
+                >
+                  <Pencil size={15} />
+                  {selected.demo ? "Usar como modelo" : "Editar compromisso"}
+                </button>
+                {!selected.demo && (
+                  <button
+                    className="icon-button danger-text"
+                    aria-label="Cancelar compromisso"
+                    title="Cancelar compromisso"
+                    onClick={() => {
+                      setConfirm({
+                        type: "booking",
+                        id: selected.id,
+                        name: selected.title,
+                      });
+                      setSelected(null);
+                      setFormError("");
+                    }}
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </Modal>
+      )}
+      {draft && (
+        <Modal
+          title={draft.id ? "Editar compromisso" : "Novo compromisso"}
+          subtitle="Organize os detalhes. A reserva de sala é opcional."
+          wide
+          onClose={() => {
+            if (!saving) setDraft(null);
+          }}
+        >
+          <form onSubmit={saveBooking} className="booking-form">
+            <label>
+              Título do compromisso <span>*</span>
+              <input
+                required
+                maxLength={120}
+                placeholder="Ex.: Entrega de projeto, retorno ao cliente ou reunião"
+                value={draft.title}
+                onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                autoFocus
+              />
+            </label>
+            <div className="form-row three-col">
+              <label>
+                Data <span>*</span>
+                <input
+                  type="date"
+                  required
+                  value={draft.date}
+                  onChange={(e) => setDraft({ ...draft, date: e.target.value })}
+                />
+              </label>
+              <label>
+                Início <span>*</span>
+                <input
+                  type="time"
+                  required
+                  value={draft.start}
+                  onChange={(e) =>
+                    setDraft({ ...draft, start: e.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Término <span>*</span>
+                <input
+                  type="time"
+                  required
+                  value={draft.end}
+                  onChange={(e) => setDraft({ ...draft, end: e.target.value })}
+                />
+              </label>
+            </div>
+            <div className="form-row">
+              <label>
+                Sala de reunião <span className="optional">opcional</span>
+                <select
+                  value={draft.roomId}
+                  onChange={(e) =>
+                    setDraft({ ...draft, roomId: e.target.value })
+                  }
+                >
+                  <option value="">Sem sala de reunião</option>
+                  {activeRooms.map((room) => (
+                    <option key={room.id} value={room.id}>
+                      {room.name}
+                      {room.capacity ? ` · ${room.capacity} pessoas` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Tipo de encontro
+                <select
+                  value={draft.kind}
+                  onChange={(e) => setDraft({ ...draft, kind: e.target.value })}
+                >
+                  {Object.entries(kinds).map(([key, label]) => (
+                    <option value={key} key={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <MeetingLinkField
+              value={draft.link}
+              onChange={(link) => setDraft({ ...draft, link })}
+            />
+            {draftConflict ? (
+              <div className="conflict-note" role="alert">
+                <Info size={17} />
+                <span>
+                  Esse horário coincide com{" "}
+                  <strong>{draftConflict.title}</strong> ({draftConflict.start}{" "}
+                  – {draftConflict.end}). Escolha outra sala ou horário.
+                </span>
+              </div>
+            ) : (
+              draft.roomId &&
+              draft.start < draft.end && (
+                <div className="available-note">
+                  <CheckCircle2 size={15} />
+                  Sala disponível no horário selecionado.
+                </div>
+              )
+            )}
+            <label>
+              Participantes
+              <input
+                maxLength={1000}
+                placeholder="Nomes ou e-mails, separados por vírgula"
+                value={draft.participants}
+                onChange={(e) =>
+                  setDraft({ ...draft, participants: e.target.value })
+                }
+              />
+              <small>
+                Os participantes ficam registrados na agenda. Convites por
+                e-mail não são enviados.
+              </small>
+            </label>
+            <label>
+              Descrição <span className="optional">opcional</span>
+              <textarea
+                maxLength={2000}
+                rows={3}
+                placeholder="Pauta, objetivos ou algo que a equipe precisa saber…"
+                value={draft.description}
+                onChange={(e) =>
+                  setDraft({ ...draft, description: e.target.value })
+                }
+              />
+            </label>
+            {formError && (
+              <div role="alert" className="form-error">
+                {formError}
+              </div>
+            )}
+            <div className="form-footnote">
+              <Clock3 size={14} />
+              Todos os horários seguem o fuso de São Paulo (GMT−3).
+            </div>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="button button-secondary"
+                disabled={saving}
+                onClick={() => setDraft(null)}
+              >
+                Voltar
+              </button>
+              <button
+                type="submit"
+                disabled={saving || !!draftConflict}
+                className="button button-primary"
+              >
+                {saving ? (
+                  <LoaderCircle className="spin" size={17} />
+                ) : (
+                  <Check size={17} />
+                )}
+                {saving
+                  ? "Salvando…"
+                  : draft.id
+                    ? "Salvar alterações"
+                    : "Salvar compromisso"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {roomDraft && (
+        <Modal
+          title={
+            roomDraft.id ? "Editar espaço" : "Um novo espaço para a equipe"
+          }
+          subtitle="Cadastre as informações da sala de reunião."
+          onClose={() => {
+            if (!saving) setRoomDraft(null);
+          }}
+        >
+          <form className="booking-form" onSubmit={saveRoom}>
+            <label>
+              Nome da sala <span>*</span>
+              <input
+                autoFocus
+                required
+                maxLength={70}
+                placeholder="Ex.: Sala de reuniões 01"
+                value={roomDraft.name}
+                onChange={(e) =>
+                  setRoomDraft({ ...roomDraft, name: e.target.value })
+                }
+              />
+            </label>
+            <div className="form-row">
+              <label>
+                Capacidade <span className="optional">opcional</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={roomDraft.capacity || ""}
+                  onChange={(e) =>
+                    setRoomDraft({
+                      ...roomDraft,
+                      capacity: Number(e.target.value),
+                    })
+                  }
+                />
+              </label>
+              <label>
+                Localização
+                <input
+                  maxLength={100}
+                  placeholder="Ex.: 1º andar"
+                  value={roomDraft.location}
+                  onChange={(e) =>
+                    setRoomDraft({ ...roomDraft, location: e.target.value })
+                  }
+                />
+              </label>
+            </div>
+            <label>
+              Recursos disponíveis
+              <input
+                maxLength={300}
+                placeholder="TV, projetor, quadro branco…"
+                value={roomDraft.equipment}
+                onChange={(e) =>
+                  setRoomDraft({ ...roomDraft, equipment: e.target.value })
+                }
+              />
+              <small>Separe os recursos por vírgula.</small>
+            </label>
+            <fieldset className="color-field">
+              <legend>Cor na agenda</legend>
+              {Object.entries(colorNames).map(([key, label]) => (
+                <button
+                  type="button"
+                  className={`color-option color-${key} ${roomDraft.color === key ? "selected" : ""}`}
+                  key={key}
+                  aria-label={label}
+                  title={label}
+                  aria-pressed={roomDraft.color === key}
+                  onClick={() => setRoomDraft({ ...roomDraft, color: key })}
+                >
+                  {roomDraft.color === key && <Check size={17} />}
+                </button>
+              ))}
+            </fieldset>
+            {formError && (
+              <p role="alert" className="form-error">
+                {formError}
+              </p>
+            )}
+            <div className="modal-actions">
+              {roomDraft.id && (
+                <button
+                  type="button"
+                  disabled={saving}
+                  className="button danger-text archive-button"
+                  onClick={() => {
+                    setConfirm({
+                      type: "room",
+                      id: roomDraft.id!,
+                      name: roomDraft.name,
+                    });
+                    setRoomDraft(null);
+                    setFormError("");
+                  }}
+                >
+                  <Trash2 size={15} />
+                  Arquivar
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={saving}
+                className="button button-secondary"
+                onClick={() => setRoomDraft(null)}
+              >
+                Voltar
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="button button-primary"
+              >
+                {saving ? (
+                  <LoaderCircle className="spin" size={16} />
+                ) : (
+                  <Check size={16} />
+                )}
+                Salvar sala
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {confirm && (
+        <Modal
+          title={
+            confirm.type === "booking"
+              ? "Cancelar este compromisso?"
+              : "Arquivar este espaço?"
+          }
+          onClose={() => {
+            if (!saving) setConfirm(null);
+          }}
+        >
+          <p className="confirm-description">
+            {confirm.type === "booking" ? (
+              <>
+                O compromisso <strong>{confirm.name}</strong> será removido da
+                agenda. Se houver uma sala reservada, o horário ficará
+                disponível.
+              </>
+            ) : (
+              <>
+                A sala <strong>{confirm.name}</strong> deixará de receber novas
+                reservas. O histórico será mantido. Salas com reservas futuras
+                precisam ter seus agendamentos transferidos ou cancelados antes.
+              </>
+            )}
+          </p>
+          {formError && (
+            <p className="form-error" role="alert">
+              {formError}
+            </p>
+          )}
+          <div className="modal-actions">
+            <button
+              className="button button-secondary"
+              disabled={saving}
+              onClick={() => setConfirm(null)}
+            >
+              Voltar
+            </button>
+            <button
+              className="button button-danger"
+              disabled={saving}
+              onClick={async () => {
+                if (
+                  await mutate(
+                    {
+                      action:
+                        confirm.type === "booking"
+                          ? "deleteBooking"
+                          : "archiveRoom",
+                      id: confirm.id,
+                    },
+                    confirm.type === "booking"
+                      ? "Compromisso cancelado."
+                      : "Sala arquivada.",
+                  )
+                ) {
+                  setConfirm(null);
+                  setRoomFilter([]);
+                }
+              }}
+            >
+              {saving ? (
+                <LoaderCircle className="spin" size={16} />
+              ) : (
+                <Trash2 size={16} />
+              )}
+              Confirmar{" "}
+              {confirm.type === "booking" ? "cancelamento" : "arquivamento"}
+            </button>
+          </div>
+        </Modal>
+      )}
+      {help && (
+        <Modal
+          title="Uma agenda para conectar a Realess"
+          subtitle="Tudo o que você precisa para começar."
+          onClose={() => setHelp(false)}
+        >
+          <div className="help-content">
+            <div>
+              <CalendarDays size={22} />
+              <section>
+                <h3>Organize a rotina</h3>
+                <p>
+                  Use “Novo compromisso” para registrar atividades, reuniões ou
+                  compromissos. Você também pode clicar em um horário da agenda.
+                  A reserva de sala é opcional.
+                </p>
+              </section>
+            </div>
+            <div>
+              <DoorOpen size={22} />
+              <section>
+                <h3>Reserve sem desencontros</h3>
+                <p>
+                  A Realess já tem Sala de reunião 1 e Sala de reunião 2
+                  cadastradas. Você pode editar os espaços ou criar novas salas.
+                  A agenda impede reservas simultâneas na mesma sala.
+                </p>
+              </section>
+            </div>
+            <div>
+              <Users size={22} />
+              <section>
+                <h3>Sua equipe, na mesma página</h3>
+                <p>
+                  Os compromissos ficam salvos e a agenda atualiza a cada 30
+                  segundos. Cada pessoa pode editar e cancelar seus próprios
+                  compromissos. O acesso inicial deste site é privado para o
+                  criador; o compartilhamento com a equipe é configurado no
+                  Sites.
+                </p>
+              </section>
+            </div>
+            <div>
+              <Download size={22} />
+              <section>
+                <h3>Leve a agenda com você</h3>
+                <p>
+                  Exporte os encontros em formato .ics e importe no Outlook ou
+                  Google Agenda. Participantes são registrados aqui; o site não
+                  envia convites por e-mail.
+                </p>
+              </section>
+            </div>
+          </div>
+          <div className="modal-actions">
+            <button
+              className="button button-primary"
+              onClick={() => setHelp(false)}
+            >
+              Tudo certo <Check size={16} />
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
-    {toast&&<div role="status" className="toast"><CheckCircle2 size={19}/>{toast}<button aria-label="Dispensar mensagem" onClick={()=>setToast("")}><X size={16}/></button></div>}
-    {selected&&<Modal title={selected.title} subtitle={selected.demo?"Agendamento ilustrativo":"Detalhes do compromisso"} onClose={()=>setSelected(null)}><div className="event-detail"><span className={`detail-kind color-${eventColor(selected)}`}>{kinds[selected.kind]||"Reunião"}</span><MeetingLinkDetail value={selected.link} onCopy={copyMeetingLink} onAddLink={selected.demo||selected.ownerId===data?.user.id?()=>editBooking(selected):undefined}/><div className="detail-row"><CalendarDays size={20}/><div><strong>{fmt(selected.date,{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</strong><span>{selected.start} – {selected.end} · horário de Brasília</span></div></div><div className="detail-row">{selected.roomId?<DoorOpen size={20}/>:selected.link||selected.kind==="online"?<Video size={20}/>:<CalendarDays size={20}/>}<div><strong>{eventLocation(selected)}</strong><span>{selected.roomId ? (roomById(selected.roomId)?.location || "Sala reservada para este compromisso.") : "Este compromisso não reserva uma sala."}</span></div></div><div className="detail-row"><Users size={20}/><div><strong>{selected.ownerName}</strong><span>Organizador{selected.participants?` · ${selected.participants}`:""}</span></div></div>{selected.description&&<p className="detail-description">{selected.description}</p>}</div><div className="modal-actions detail-actions"><button className="button button-secondary" onClick={()=>download([selected])}><Download size={15}/>Exportar</button>{(selected.demo||selected.ownerId===data?.user.id)&&<><button className="button button-primary" onClick={()=>editBooking(selected)}><Pencil size={15}/>{selected.demo?"Usar como modelo":"Editar compromisso"}</button>{!selected.demo&&<button className="icon-button danger-text" aria-label="Cancelar compromisso" title="Cancelar compromisso" onClick={()=>{setConfirm({type:"booking",id:selected.id,name:selected.title});setSelected(null);setFormError("");}}><Trash2 size={18}/></button>}</>}</div></Modal>}
-    {draft&&<Modal title={draft.id?"Editar compromisso":"Novo compromisso"} subtitle="Organize os detalhes. A reserva de sala é opcional." wide onClose={()=>{if(!saving)setDraft(null);}}><form onSubmit={saveBooking} className="booking-form"><label>Título do compromisso <span>*</span><input required maxLength={120} placeholder="Ex.: Entrega de projeto, retorno ao cliente ou reunião" value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})} autoFocus/></label><div className="form-row three-col"><label>Data <span>*</span><input type="date" required value={draft.date} onChange={e=>setDraft({...draft,date:e.target.value})}/></label><label>Início <span>*</span><input type="time" required value={draft.start} onChange={e=>setDraft({...draft,start:e.target.value})}/></label><label>Término <span>*</span><input type="time" required value={draft.end} onChange={e=>setDraft({...draft,end:e.target.value})}/></label></div><div className="form-row"><label>Sala de reunião <span className="optional">opcional</span><select value={draft.roomId} onChange={e=>setDraft({...draft,roomId:e.target.value})}><option value="">Sem sala de reunião</option>{activeRooms.map(room=><option key={room.id} value={room.id}>{room.name}{room.capacity ? ` · ${room.capacity} pessoas` : ""}</option>)}</select></label><label>Tipo de encontro<select value={draft.kind} onChange={e=>setDraft({...draft,kind:e.target.value})}>{Object.entries(kinds).map(([key,label])=><option value={key} key={key}>{label}</option>)}</select></label></div><MeetingLinkField value={draft.link} onChange={link=>setDraft({...draft,link})}/>{draftConflict?<div className="conflict-note" role="alert"><Info size={17}/><span>Esse horário coincide com <strong>{draftConflict.title}</strong> ({draftConflict.start} – {draftConflict.end}). Escolha outra sala ou horário.</span></div>:draft.roomId&&draft.start<draft.end&&<div className="available-note"><CheckCircle2 size={15}/>Sala disponível no horário selecionado.</div>}<label>Participantes<input maxLength={1000} placeholder="Nomes ou e-mails, separados por vírgula" value={draft.participants} onChange={e=>setDraft({...draft,participants:e.target.value})}/><small>Os participantes ficam registrados na agenda. Convites por e-mail não são enviados.</small></label><label>Descrição <span className="optional">opcional</span><textarea maxLength={2000} rows={3} placeholder="Pauta, objetivos ou algo que a equipe precisa saber…" value={draft.description} onChange={e=>setDraft({...draft,description:e.target.value})}/></label>{formError&&<div role="alert" className="form-error">{formError}</div>}<div className="form-footnote"><Clock3 size={14}/>Todos os horários seguem o fuso de São Paulo (GMT−3).</div><div className="modal-actions"><button type="button" className="button button-secondary" disabled={saving} onClick={()=>setDraft(null)}>Voltar</button><button type="submit" disabled={saving||!!draftConflict} className="button button-primary">{saving?<LoaderCircle className="spin" size={17}/>:<Check size={17}/>}{saving?"Salvando…":draft.id?"Salvar alterações":"Salvar compromisso"}</button></div></form></Modal>}
-    {roomDraft&&<Modal title={roomDraft.id?"Editar espaço":"Um novo espaço para a equipe"} subtitle="Cadastre as informações da sala de reunião." onClose={()=>{if(!saving)setRoomDraft(null);}}><form className="booking-form" onSubmit={saveRoom}><label>Nome da sala <span>*</span><input autoFocus required maxLength={70} placeholder="Ex.: Sala de reuniões 01" value={roomDraft.name} onChange={e=>setRoomDraft({...roomDraft,name:e.target.value})}/></label><div className="form-row"><label>Capacidade <span className="optional">opcional</span><input type="number" min={1} max={500} value={roomDraft.capacity || ""} onChange={e=>setRoomDraft({...roomDraft,capacity:Number(e.target.value)})}/></label><label>Localização<input maxLength={100} placeholder="Ex.: 1º andar" value={roomDraft.location} onChange={e=>setRoomDraft({...roomDraft,location:e.target.value})}/></label></div><label>Recursos disponíveis<input maxLength={300} placeholder="TV, projetor, quadro branco…" value={roomDraft.equipment} onChange={e=>setRoomDraft({...roomDraft,equipment:e.target.value})}/><small>Separe os recursos por vírgula.</small></label><fieldset className="color-field"><legend>Cor na agenda</legend>{Object.entries(colorNames).map(([key,label])=><button type="button" className={`color-option color-${key} ${roomDraft.color===key?"selected":""}`} key={key} aria-label={label} title={label} aria-pressed={roomDraft.color===key} onClick={()=>setRoomDraft({...roomDraft,color:key})}>{roomDraft.color===key&&<Check size={17}/>}</button>)}</fieldset>{formError&&<p role="alert" className="form-error">{formError}</p>}<div className="modal-actions">{roomDraft.id&&<button type="button" disabled={saving} className="button danger-text archive-button" onClick={()=>{setConfirm({type:"room",id:roomDraft.id!,name:roomDraft.name});setRoomDraft(null);setFormError("");}}><Trash2 size={15}/>Arquivar</button>}<button type="button" disabled={saving} className="button button-secondary" onClick={()=>setRoomDraft(null)}>Voltar</button><button type="submit" disabled={saving} className="button button-primary">{saving?<LoaderCircle className="spin" size={16}/>:<Check size={16}/>}Salvar sala</button></div></form></Modal>}
-    {confirm&&<Modal title={confirm.type==="booking"?"Cancelar este compromisso?":"Arquivar este espaço?"} onClose={()=>{if(!saving)setConfirm(null);}}><p className="confirm-description">{confirm.type==="booking"?<>O compromisso <strong>{confirm.name}</strong> será removido da agenda. Se houver uma sala reservada, o horário ficará disponível.</>:<>A sala <strong>{confirm.name}</strong> deixará de receber novas reservas. O histórico será mantido. Salas com reservas futuras precisam ter seus agendamentos transferidos ou cancelados antes.</>}</p>{formError&&<p className="form-error" role="alert">{formError}</p>}<div className="modal-actions"><button className="button button-secondary" disabled={saving} onClick={()=>setConfirm(null)}>Voltar</button><button className="button button-danger" disabled={saving} onClick={async()=>{if(await mutate({action:confirm.type==="booking"?"deleteBooking":"archiveRoom",id:confirm.id},confirm.type==="booking"?"Compromisso cancelado.":"Sala arquivada.")){setConfirm(null);setRoomFilter([]);}}}>{saving?<LoaderCircle className="spin" size={16}/>:<Trash2 size={16}/>}Confirmar {confirm.type==="booking"?"cancelamento":"arquivamento"}</button></div></Modal>}
-    {help&&<Modal title="Uma agenda para conectar a Realess" subtitle="Tudo o que você precisa para começar." onClose={()=>setHelp(false)}><div className="help-content"><div><CalendarDays size={22}/><section><h3>Organize a rotina</h3><p>Use “Novo compromisso” para registrar atividades, reuniões ou compromissos. Você também pode clicar em um horário da agenda. A reserva de sala é opcional.</p></section></div><div><DoorOpen size={22}/><section><h3>Reserve sem desencontros</h3><p>A Realess já tem Sala de reunião 1 e Sala de reunião 2 cadastradas. Você pode editar os espaços ou criar novas salas. A agenda impede reservas simultâneas na mesma sala.</p></section></div><div><Users size={22}/><section><h3>Sua equipe, na mesma página</h3><p>Os compromissos ficam salvos e a agenda atualiza a cada 30 segundos. Cada pessoa pode editar e cancelar seus próprios compromissos. O acesso inicial deste site é privado para o criador; o compartilhamento com a equipe é configurado no Sites.</p></section></div><div><Download size={22}/><section><h3>Leve a agenda com você</h3><p>Exporte os encontros em formato .ics e importe no Outlook ou Google Agenda. Participantes são registrados aqui; o site não envia convites por e-mail.</p></section></div></div><div className="modal-actions"><button className="button button-primary" onClick={()=>setHelp(false)}>Tudo certo <Check size={16}/></button></div></Modal>}
-  </div>;
+  );
 }
 
-function nextMonth(day:string,amount:number) { const d=parseDay(day.slice(0,7)+"-01");d.setUTCMonth(d.getUTCMonth()+amount);return dateKey(d); }
-function Stat({icon,label,value,note,color}:{icon:ReactNode;label:string;value:string|number;note:string;color:string}) { return <article className="stat-card"><div className="stat-top"><span>{label}</span><span className={`stat-icon color-${color}`}>{icon}</span></div><strong className="stat-value">{typeof value==="number"?String(value).padStart(2,"0"):value}</strong><span className="stat-note">{note}</span></article>; }
-function MiniCalendar({month,selected,today,events,onMonth,onSelect}:{month:string;selected:string;today:string;events:Booking[];onMonth:(d:string)=>void;onSelect:(d:string)=>void}) { const start=monday(month);const count=addDays(start,35)>=nextMonth(month,1)?35:42;return <section className="mini-calendar" aria-label="Selecionar data"><header><strong>{fmt(month,{month:"long",year:"numeric"}).replace(" de "," ")}</strong><div><button aria-label="Mês anterior" onClick={()=>onMonth(nextMonth(month,-1))}><ChevronLeft size={14}/></button><button aria-label="Próximo mês" onClick={()=>onMonth(nextMonth(month,1))}><ChevronRight size={14}/></button></div></header><div className="mini-grid">{["S","T","Q","Q","S","S","D"].map((d,i)=><span className="mini-weekday" key={i}>{d}</span>)}{Array.from({length:count},(_,i)=>{const day=addDays(start,i);return <button key={day} aria-label={fmt(day,{day:"numeric",month:"long"})} aria-current={day===today?"date":undefined} className={`${day.slice(0,7)!==month.slice(0,7)?"other-month":""} ${day===selected?"mini-selected":""} ${day===today?"mini-today":""}`} onClick={()=>onSelect(day)}>{parseDay(day).getUTCDate()}{events.some(e=>e.date===day)&&<span/>}</button>;})}</div></section>; }
-function WeekView({days,today,events,currentTime,eventColor,eventLocation,onEvent,onSlot}:{days:string[];today:string;events:Booking[];currentTime:string;eventColor:(e:Booking)=>string;eventLocation:(event:Booking)=>string;onEvent:(e:Booking)=>void;onSlot:(day:string,start:string)=>void}) {
-  const visible=events.filter(e=>days.includes(e.date));
-  const startHour=Math.min(8,...visible.map(e=>Math.floor(minutes(e.start)/60)));
-  const endHour=Math.max(18,...visible.map(e=>Math.ceil(minutes(e.end)/60)));
-  const hourCount=endHour-startHour;
-  const hourHeight=96;
-  return <div className="week-scroll"><div className="week-calendar" style={{minWidth:days.length===7?1120:820}}><div className="week-head"><div className="timezone-cell">GMT−3</div>{days.map(day=><div className={`day-heading ${day===today?"is-today":""}`} key={day}><span>{fmt(day,{weekday:"short"}).replace(".","")}</span><strong>{fmt(day,{day:"2-digit"})}</strong>{day===today&&<span className="today-indicator"/>}</div>)}</div><div className="week-body" style={{height:hourCount*hourHeight}}><div className="hour-column">{Array.from({length:hourCount},(_,i)=><span key={i} style={{top:i*hourHeight}}>{String(startHour+i).padStart(2,"0")}:00</span>)}</div>{days.map(day=><div className={`day-column ${day===today?"is-today":""}`} key={day}>{Array.from({length:hourCount*2},(_,i)=><button className={`time-slot ${i%2===0?"hour-start":""}`} key={i} style={{top:i*(hourHeight/2)}} aria-label={`Agendar ${fmt(day,{day:"numeric",month:"long"})} às ${toTime(startHour*60+i*30)}`} onClick={()=>onSlot(day,toTime(startHour*60+i*30))}><Plus size={14}/></button>)}{placeEvents(events.filter(e=>e.date===day)).map(({event,lane,lanes})=><button key={event.id} className={`calendar-event color-${eventColor(event)} ${minutes(event.end)-minutes(event.start)<60?"short-event":""}`} style={{top:(minutes(event.start)-startHour*60)/60*hourHeight+3,height:Math.max(24,(minutes(event.end)-minutes(event.start))/60*hourHeight-6),left:`calc(${lane/lanes*100}% + 5px)`,width:`calc(${100/lanes}% - 10px)`}} title={`${event.title} · ${event.start} – ${event.end} · ${eventLocation(event)}`} onClick={()=>onEvent(event)}><span className="event-time">{event.start} – {event.end}</span><strong>{event.title}</strong><span className="event-room">{event.roomId?<DoorOpen size={10}/>:(event.link||event.kind==="online")?<Video size={10}/>:<CalendarDays size={10}/>}{eventLocation(event)}</span>{minutes(event.end)-minutes(event.start)>=90&&<span className="event-avatars"><span>{initials(event.ownerName)}</span><span><Users size={9}/></span></span>}</button>)}{day===today&&minutes(currentTime)>=startHour*60&&minutes(currentTime)<endHour*60&&<div className="current-time-line" style={{top:(minutes(currentTime)-startHour*60)/60*hourHeight}}><span/></div>}</div>)}</div></div></div>;
+function Stat({
+  icon,
+  label,
+  value,
+  note,
+  color,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string | number;
+  note: string;
+  color: string;
+}) {
+  return (
+    <article className="stat-card">
+      <div className="stat-top">
+        <span>{label}</span>
+        <span className={`stat-icon color-${color}`}>{icon}</span>
+      </div>
+      <strong className="stat-value">
+        {typeof value === "number" ? String(value).padStart(2, "0") : value}
+      </strong>
+      <span className="stat-note">{note}</span>
+    </article>
+  );
 }
-function MonthView({anchor,today,events,eventColor,onEvent,onDay}:{anchor:string;today:string;events:Booking[];eventColor:(e:Booking)=>string;onEvent:(e:Booking)=>void;onDay:(day:string)=>void}) { const first=anchor.slice(0,7)+"-01";const start=monday(first);const last=addDays(nextMonth(anchor,1),-1);const count=addDays(start,35)>last?35:42;return <div className="month-scroll"><div className="month-calendar">{["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"].map(day=><div className="month-weekday" key={day}>{day}</div>)}{Array.from({length:count},(_,i)=>{const day=addDays(start,i);const dayEvents=events.filter(e=>e.date===day).sort((a,b)=>a.start.localeCompare(b.start));return <div className={`month-day ${day.slice(0,7)!==anchor.slice(0,7)?"other-month":""}`} key={day}><button className={`month-day-number ${day===today?"is-today":""}`} onClick={()=>onDay(day)} aria-label={`Ver ${fmt(day,{day:"numeric",month:"long"})}`}>{parseDay(day).getUTCDate()}</button>{dayEvents.slice(0,3).map(e=><button className={`month-event color-${eventColor(e)}`} key={e.id} onClick={()=>onEvent(e)}><span>{e.start}</span>{e.title}</button>)}{dayEvents.length>3&&<button className="month-more" onClick={()=>onDay(day)}>+{dayEvents.length-3} encontros</button>}</div>;})}</div></div>; }
-function EmptyState({onCreate,filtered,mine}:{onCreate:()=>void;filtered:boolean;mine:boolean}) {return <div className="empty-state"><span><CalendarDays size={28}/></span><h3>{filtered?"Nenhum encontro por aqui.":mine?"Seu próximo encontro começa aqui.":"Sua agenda começa aqui."}</h3><p>{filtered?"Tente outro termo ou ajuste os filtros da agenda.":mine?"Os compromissos que você criar vão aparecer nesta lista.":"Adicione um compromisso, uma atividade ou uma reunião."}</p><button className="button button-primary" onClick={onCreate}><Plus size={16}/>Novo compromisso</button></div>;}
+function WeekView({
+  days,
+  today,
+  events,
+  currentTime,
+  eventColor,
+  eventLocation,
+  onEvent,
+  onSlot,
+}: {
+  days: string[];
+  today: string;
+  events: Booking[];
+  currentTime: string;
+  eventColor: (e: Booking) => string;
+  eventLocation: (event: Booking) => string;
+  onEvent: (e: Booking) => void;
+  onSlot: (day: string, start: string) => void;
+}) {
+  const visible = events.filter((e) => days.includes(e.date));
+  const startHour = Math.min(
+    8,
+    ...visible.map((e) => Math.floor(minutes(e.start) / 60)),
+  );
+  const endHour = Math.max(
+    18,
+    ...visible.map((e) => Math.ceil(minutes(e.end) / 60)),
+  );
+  const hourCount = endHour - startHour;
+  const hourHeight = 6; // rem: slot positions scale with the visitor's font size.
+  return (
+    <>
+      <p className="week-scroll-hint">
+        Deslize a grade para ver os outros dias e horários. Você também pode
+        usar Mês ou Lista.
+      </p>
+      <div
+        className="week-scroll"
+        tabIndex={0}
+        role="region"
+        aria-label="Agenda semanal por horários"
+      >
+        <div
+          className="week-calendar"
+          style={{ minWidth: days.length === 7 ? 1120 : 820 }}
+        >
+          <div className="week-head">
+            <div className="timezone-cell">GMT−3</div>
+            {days.map((day) => (
+              <div
+                className={`day-heading ${day === today ? "is-today" : ""}`}
+                key={day}
+              >
+                <span>{fmt(day, { weekday: "short" }).replace(".", "")}</span>
+                <strong>{fmt(day, { day: "2-digit" })}</strong>
+                {day === today && <span className="today-indicator" />}
+              </div>
+            ))}
+          </div>
+          <div
+            className="week-body"
+            style={{ height: `${hourCount * hourHeight}rem` }}
+          >
+            <div className="hour-column">
+              {Array.from({ length: hourCount }, (_, i) => (
+                <span key={i} style={{ top: `${i * hourHeight}rem` }}>
+                  {String(startHour + i).padStart(2, "0")}:00
+                </span>
+              ))}
+            </div>
+            {days.map((day) => (
+              <div
+                className={`day-column ${day === today ? "is-today" : ""}`}
+                key={day}
+              >
+                {Array.from({ length: hourCount * 2 }, (_, i) => (
+                  <button
+                    className={`time-slot ${i % 2 === 0 ? "hour-start" : ""}`}
+                    key={i}
+                    style={{ top: `${i * (hourHeight / 2)}rem` }}
+                    aria-label={`Agendar ${fmt(day, { day: "numeric", month: "long" })} às ${toTime(startHour * 60 + i * 30)}`}
+                    onClick={() => onSlot(day, toTime(startHour * 60 + i * 30))}
+                  >
+                    <Plus size={14} />
+                  </button>
+                ))}
+                {placeEvents(events.filter((e) => e.date === day)).map(
+                  ({ event, lane, lanes }) => (
+                    <button
+                      key={event.id}
+                      className={`calendar-event color-${eventColor(event)} ${minutes(event.end) - minutes(event.start) < 60 ? "short-event" : ""}`}
+                      style={{
+                        top: `${((minutes(event.start) - startHour * 60) / 60) * hourHeight + 0.1875}rem`,
+                        height: `${Math.max(1.5, ((minutes(event.end) - minutes(event.start)) / 60) * hourHeight - 0.375)}rem`,
+                        left: `calc(${(lane / lanes) * 100}% + 5px)`,
+                        width: `calc(${100 / lanes}% - 10px)`,
+                      }}
+                      title={`${event.title} · ${event.start} – ${event.end} · ${eventLocation(event)}`}
+                      onClick={() => onEvent(event)}
+                    >
+                      <span className="event-time">
+                        {event.start} – {event.end}
+                      </span>
+                      <strong>{event.title}</strong>
+                      <span className="event-room">
+                        {event.roomId ? (
+                          <DoorOpen size={10} />
+                        ) : event.link || event.kind === "online" ? (
+                          <Video size={10} />
+                        ) : (
+                          <CalendarDays size={10} />
+                        )}
+                        {eventLocation(event)}
+                      </span>
+                      {minutes(event.end) - minutes(event.start) >= 90 && (
+                        <span className="event-avatars">
+                          <span>{initials(event.ownerName)}</span>
+                          <span>
+                            <Users size={9} />
+                          </span>
+                        </span>
+                      )}
+                    </button>
+                  ),
+                )}
+                {day === today &&
+                  minutes(currentTime) >= startHour * 60 &&
+                  minutes(currentTime) < endHour * 60 && (
+                    <div
+                      className="current-time-line"
+                      style={{
+                        top: `${((minutes(currentTime) - startHour * 60) / 60) * hourHeight}rem`,
+                      }}
+                    >
+                      <span />
+                    </div>
+                  )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+function EmptyState({
+  onCreate,
+  filtered,
+  mine,
+}: {
+  onCreate: () => void;
+  filtered: boolean;
+  mine: boolean;
+}) {
+  return (
+    <div className="empty-state">
+      <span>
+        <CalendarDays size={28} />
+      </span>
+      <h3>
+        {filtered
+          ? "Nenhum encontro por aqui."
+          : mine
+            ? "Seu próximo encontro começa aqui."
+            : "Sua agenda começa aqui."}
+      </h3>
+      <p>
+        {filtered
+          ? "Tente outro termo ou ajuste os filtros da agenda."
+          : mine
+            ? "Os compromissos que você criar vão aparecer nesta lista."
+            : "Adicione um compromisso, uma atividade ou uma reunião."}
+      </p>
+      <button className="button button-primary" onClick={onCreate}>
+        <Plus size={16} />
+        Novo compromisso
+      </button>
+    </div>
+  );
+}
