@@ -272,13 +272,28 @@ export default function Workspace() {
       (!kindFilter || e.kind === kindFilter) &&
       (tab !== "mine" || e.ownerId === data?.user?.id),
   );
-  const weekStart = view === "week" ? anchor : monday(anchor);
-  const days = Array.from({ length: 5 }, (_, i) => addDays(weekStart, i));
+  const weekStart = monday(anchor);
+  const weekEnd = addDays(weekStart, 4);
+  let firstVisibleDay = weekStart;
+  if (view === "week" && today >= weekStart && today <= weekEnd) {
+    firstVisibleDay = today;
+  }
+  const firstVisibleOffset = Math.max(
+    0,
+    Math.round(
+      (parseDay(firstVisibleDay).getTime() - parseDay(weekStart).getTime()) /
+        86400000,
+    ),
+  );
+  const days = Array.from(
+    { length: 5 - firstVisibleOffset },
+    (_, i) => addDays(firstVisibleDay, i),
+  );
   const rangeStart = view === "month" ? anchor.slice(0, 7) + "-01" : weekStart;
   const rangeEnd =
     view === "month"
       ? addDays(nextMonth(anchor, 1), -1)
-      : addDays(weekStart, 4);
+      : weekEnd;
   const rangeEvents = filtered
     .filter((e) => e.date >= rangeStart && e.date <= rangeEnd)
     .sort(
@@ -501,7 +516,7 @@ export default function Workspace() {
   const periodLabel =
     view === "month"
       ? fmt(anchor, { month: "long", year: "numeric" })
-      : `${fmt(weekStart, { day: "2-digit" })} – ${fmt(addDays(weekStart, 4), { day: "2-digit", month: "short", year: "numeric" }).replace(" de ", " ").replace(" de ", " ")}`;
+      : `${fmt(weekStart, { day: "2-digit" })} – ${fmt(weekEnd, { day: "2-digit", month: "short", year: "numeric" }).replace(" de ", " ").replace(" de ", " ")}`;
 
   return (
     <div className="app-shell">
@@ -994,7 +1009,7 @@ export default function Workspace() {
                       <div className="calendar-title">
                         <h2>
                           {view === "week"
-                            ? `${fmt(weekStart, { day: "numeric", month: "short" })} – ${fmt(addDays(weekStart, 4), { day: "numeric", month: "short", year: "numeric" })}`
+                            ? `${fmt(days[0], { day: "numeric", month: "short" })} – ${fmt(days[days.length - 1], { day: "numeric", month: "short", year: "numeric" })}`
                             : fmt(anchor, {
                                 month: "long",
                                 year: "numeric",
@@ -1690,9 +1705,8 @@ export default function Workspace() {
                   </button>
                   {!selected.demo && (
                     <button
-                      className="icon-button danger-text"
-                      aria-label="Cancelar compromisso"
-                      title="Cancelar compromisso"
+                      className="button button-danger"
+                      aria-label="Excluir compromisso da agenda"
                       onClick={() => {
                         setConfirm({
                           type: "booking",
@@ -1704,6 +1718,7 @@ export default function Workspace() {
                       }}
                     >
                       <Trash2 size={18} />
+                      Excluir
                     </button>
                   )}
                 </>
@@ -2058,7 +2073,7 @@ export default function Workspace() {
         <Modal
           title={
             confirm.type === "booking"
-              ? "Cancelar este compromisso?"
+              ? "Excluir este compromisso da agenda?"
               : "Arquivar este espaço?"
           }
           onClose={() => {
@@ -2106,7 +2121,7 @@ export default function Workspace() {
                     id: confirm.id,
                   },
                   confirm.type === "booking"
-                    ? "Compromisso cancelado."
+                    ? "Compromisso excluído da agenda."
                     : "Sala arquivada.",
                 );
                 if (result) {
@@ -2124,8 +2139,9 @@ export default function Workspace() {
               ) : (
                 <Trash2 size={16} />
               )}
-              Confirmar{" "}
-              {confirm.type === "booking" ? "cancelamento" : "arquivamento"}
+              {confirm.type === "booking"
+                ? "Excluir compromisso"
+                : "Confirmar arquivamento"}
             </button>
           </div>
         </Modal>
@@ -2291,7 +2307,27 @@ function WeekView({
   );
   const hourCount = endHour - startHour;
   const hourHeight = 5.75; // rem
-  const calendarMinWidth = Math.max(1100, days.length * 190);
+
+  const hasToday = days.includes(today);
+  const calendarMinWidth = hasToday
+    ? Math.max(900, (days.length - 1) * 185 + 460 + 76)
+    : Math.max(1100, days.length * 190);
+
+  const gridTemplateColumns = `4.5rem ${days
+    .map((day) => (day === today ? "minmax(26rem, 2.7fr)" : "minmax(11.5rem, 1fr)"))
+    .join(" ")}`;
+
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    const todayCol = scrollRef.current.querySelector(".day-column.is-today") as HTMLElement | null;
+    if (todayCol) {
+      const container = scrollRef.current;
+      const offset = todayCol.offsetLeft - 80;
+      if (offset > 0 && container.scrollLeft === 0) {
+        container.scrollTo({ left: Math.max(0, offset - 40), behavior: "smooth" });
+      }
+    }
+  }, [days, today]);
 
   return (
     <div className="week-scroll-container">
@@ -2331,13 +2367,14 @@ function WeekView({
           <div
             className="week-head"
             style={{
-              gridTemplateColumns: `4.5rem repeat(${days.length}, minmax(11rem, 1fr))`,
+              gridTemplateColumns,
             }}
           >
             <div className="timezone-cell">GMT−3</div>
             {days.map((day) => {
               const isToday = day === today;
               const isTomorrow = day === addDays(today, 1);
+              const dayEventCount = events.filter((e) => e.date === day && e.status !== "cancelled").length;
               return (
                 <div
                   title={holidays
@@ -2351,9 +2388,18 @@ function WeekView({
                   key={day}
                 >
                   <div className="day-heading-top">
-                    <span>{fmt(day, { weekday: "short" })}</span>
-                    {isToday && <span className="today-badge">HOJE</span>}
+                    <span>{fmt(day, { weekday: isToday ? "long" : "short" })}</span>
+                    {isToday && (
+                      <span className="today-badge">
+                        <span className="today-badge-dot" /> HOJE
+                      </span>
+                    )}
                     {!isToday && isTomorrow && <span className="tomorrow-badge">AMANHÃ</span>}
+                    {isToday && (
+                      <span className="today-count-badge">
+                        {dayEventCount} {dayEventCount === 1 ? "reunião" : "reuniões"}
+                      </span>
+                    )}
                   </div>
                   <strong>{fmt(day, { day: "2-digit" })}</strong>
                   {holidays.some((item) => item.date === day) && (
@@ -2369,23 +2415,13 @@ function WeekView({
                 </div>
               );
             })}
-            {days.includes(today) &&
-              minutes(currentTime) >= startHour * 60 &&
-              minutes(currentTime) < endHour * 60 && (
-                <div
-                  className="current-time-line"
-                  style={{
-                    top: `${((minutes(currentTime) - startHour * 60) / 60) * hourHeight}rem`,
-                    right: `${((days.length - days.indexOf(today) - 1) / days.length) * 100}%`,
-                  }}
-                >
-                  <span />
-                </div>
-              )}
           </div>
           <div
             className="week-body"
-            style={{ height: `${hourCount * hourHeight}rem` }}
+            style={{
+              height: `${hourCount * hourHeight}rem`,
+              gridTemplateColumns,
+            }}
           >
             <div className="hour-column">
               {Array.from({ length: hourCount }, (_, i) => (
@@ -2399,6 +2435,20 @@ function WeekView({
                 className={`day-column ${day === today ? "is-today" : ""}`}
                 key={day}
               >
+                {day === today &&
+                  minutes(currentTime) >= startHour * 60 &&
+                  minutes(currentTime) < endHour * 60 && (
+                    <div
+                      className="current-time-indicator"
+                      style={{
+                        top: `${((minutes(currentTime) - startHour * 60) / 60) * hourHeight}rem`,
+                      }}
+                      title={`Horário atual: ${currentTime}`}
+                    >
+                      <span className="current-time-pill">{currentTime}</span>
+                      <span className="current-time-line-rule" />
+                    </div>
+                  )}
                 {Array.from({ length: hourCount * 2 }, (_, i) => (
                   <button
                     className={`time-slot ${i % 2 === 0 ? "hour-start" : ""}`}
@@ -2422,7 +2472,7 @@ function WeekView({
                         className={`calendar-event ${isNow ? "is-now" : isPast ? "event-past" : "event-future"} ${event.status === "cancelled" ? "is-cancelled" : ""} color-${eventColor(event)} ${isShort ? "short-event" : ""}`}
                         style={{
                           top: `${((minutes(event.start) - startHour * 60) / 60) * hourHeight + 0.0625}rem`,
-                          height: `${Math.max(2.75, (durationMins / 60) * hourHeight - 0.125)}rem`,
+                          height: `${Math.max(2.875, (durationMins / 60) * hourHeight - 0.125)}rem`,
                           left: `calc(${(lane / lanes) * 100}% + 4px)`,
                           width: `calc(${100 / lanes}% - 8px)`,
                         }}
@@ -2463,7 +2513,9 @@ function WeekView({
                             </span>
                           </div>
                           <div className="event-time-vertical" aria-label={`${event.start} às ${event.end}`}>
-                            <span>{event.start} – {event.end}</span>
+                            <span>{event.start}</span>
+                            <span className="event-time-sep">–</span>
+                            <span>{event.end}</span>
                           </div>
                         </div>
                       </button>
