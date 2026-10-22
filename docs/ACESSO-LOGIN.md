@@ -14,7 +14,13 @@ O comando solicita a senha de forma oculta e grava somente seu hash no banco con
 
 Como alternativa, copie o arquivo privado `banco-de-dados/master-bootstrap.json` deste computador para a mesma pasta privada do banco na Hostinger. A primeira requisição cria o master se ele ainda não existir. Não substitua o SQLite da hospedagem pelo banco local: isso apagaria as reuniões que estão no servidor. Esse arquivo contém um hash sensível, é ignorado pelo Git, deve ter permissão 600 no Linux e pode ser retirado depois da ativação. Também é possível fornecer o hash por `AGENDA_MASTER_PASSWORD_HASH` no ambiente do servidor.
 
-Sem uma conta provisionada, a agenda permanece bloqueada. Os dados e as reuniões anteriores são preservados pela migração. O master pode editar e excluir reuniões antigas e consultar seus históricos. Novos compromissos usam o nome da conta autenticada. Os demais usuários serão cadastrados em outra etapa.
+Sem uma conta provisionada, a agenda permanece bloqueada. Os dados e as reuniões anteriores são preservados pela migração. O master pode editar e excluir reuniões antigas e consultar seus históricos. Novos compromissos usam o nome da conta autenticada.
+
+## Cadastrar colaboradores
+
+Entre com `arthur.hille` e abra **Usuários e acessos**, no menu lateral, logo abaixo de **Meus compromissos**. Clique em **Novo usuário** e preencha nome, login e senha inicial (mínimo de 8 caracteres). Novas contas têm perfil Colaborador. A senha não é exibida na lista nem nos registros de auditoria.
+
+Somente o Master pode listar, criar, ativar ou desativar acessos, inclusive pelas APIs. Desativar um colaborador encerra suas sessões e preserva suas reuniões e histórico. A conta Master é protegida contra desativação por esta tela. Reativar um colaborador exige um novo login e não restaura sessões anteriores.
 
 ## Verificação após publicar
 

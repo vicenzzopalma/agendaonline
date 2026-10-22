@@ -102,7 +102,7 @@ export const users = sqliteTable(
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
-    email: text("email").notNull().unique(),
+    email: text("email").notNull(),
     passwordHash: text("password_hash").notNull(),
     username: text("username").unique(),
     role: text("role").notNull().default("member"),
@@ -128,5 +128,14 @@ export const loginAttempts = sqliteTable("login_attempts", {
   keyHash: text("key_hash").primaryKey(),
   attempts: integer("attempts").notNull(),
   windowStart: integer("window_start").notNull(),
+});
+
+export const userAccountHistory = sqliteTable("user_account_history", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  actorId: text("actor_id").notNull(),
+  userId: text("user_id").notNull(),
+  action: text("action").notNull(),
+  recordedAt: integer("recorded_at").notNull(),
+  snapshot: text("snapshot").notNull(),
 });
 

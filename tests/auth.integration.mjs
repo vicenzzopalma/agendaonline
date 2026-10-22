@@ -44,6 +44,8 @@ try {
   }
   const initial = await request("/"); assert.equal(initial.status, 307); assert.equal(initial.headers.get("location"), "/login");
   assert.equal((await request("/api/workspace")).status, 401);
+  assert.equal((await request("/api/users")).status, 401);
+  assert.equal((await post("/api/users", { action: "create", name: "Teste", username: "sem.acesso", password })).status, 401);
   assert.equal((await request("/api/holidays?year=2026")).status, 401);
   assert.equal((await post("/api/calendar-policy", {})).status, 401);
   assert.equal((await post("/api/workspace", { action: "deleteBooking", id: "legacy-test" })).status, 401);
@@ -68,20 +70,45 @@ try {
   checks.push("Master cancela reuniões antigas; organizador vem da conta autenticada");
   const memberLogin = await post("/api/auth/login", { username: "pessoa.teste", password });
   const memberCookie = memberLogin.headers.get("set-cookie").split(";")[0];
+  assert.equal((await request("/api/users", { headers: { Cookie: memberCookie } })).status, 403);
+  assert.equal((await post("/api/users", { action: "create", name: "Teste", username: "sem.acesso", password }, memberCookie)).status, 403);
+  const userInput = { action: "create", name: "Colaborador novo", username: "novo.teste", password };
+  assert.equal((await post("/api/users", userInput, cookie, "https://outro.example")).status, 403);
+  assert.equal((await post("/api/users", { ...userInput, role: "master" }, cookie)).status, 403);
+  const userResponse = await post("/api/users", userInput, cookie); assert.equal(userResponse.status, 201);
+  const managedUser = (await userResponse.json()).user; assert.equal(managedUser.role, "member");
+  assert.equal("passwordHash" in managedUser, false); assert.equal("password" in managedUser, false);
+  assert.equal((await post("/api/users", { ...userInput, username: "NOVO.TESTE" }, cookie)).status, 409);
+  assert.equal((await post("/api/users", { ...userInput, username: "segundo.teste" }, cookie)).status, 201);
+  const usersResponse = await request("/api/users", { headers: { Cookie: cookie } }); assert.equal(usersResponse.status, 200);
+  const accountList = (await usersResponse.json()).users;
+  const masterId = accountList.find((entry) => entry.role === "master").id;
+  assert.equal(JSON.stringify(accountList).includes("password"), false);
+  assert.equal((await post("/api/users", { action: "setActive", id: masterId, active: false }, cookie)).status, 403);
+  const newLogin = await post("/api/auth/login", { username: "novo.teste", password }); assert.equal(newLogin.status, 200);
+  const newCookie = newLogin.headers.get("set-cookie").split(";")[0];
+  assert.equal((await post("/api/users", { action: "setActive", id: managedUser.id, active: false }, cookie)).status, 200);
+  assert.equal((await request("/api/workspace", { headers: { Cookie: newCookie } })).status, 401);
+  assert.equal((await post("/api/users", { action: "setActive", id: managedUser.id, active: true }, cookie)).status, 200);
+  assert.equal((await request("/api/workspace", { headers: { Cookie: newCookie } })).status, 401);
+  checks.push("Somente Master cadastra e desativa usuários; não há criação de outro Master nem exposição de senhas");
   assert.equal((await post("/api/workspace", { action: "deleteBooking", id: booking.id, isAdmin: true }, memberCookie)).status, 403);
   assert.equal((await post("/api/workspace", { ...payload, id: booking.id, version: 1 }, memberCookie)).status, 403);
   assert.equal((await post("/api/calendar-policy", {}, memberCookie)).status, 403);
   db.connection.prepare("UPDATE users SET active=0 WHERE id='member-test'").run();
   assert.equal((await request("/api/workspace", { headers: { Cookie: memberCookie } })).status, 401);
   checks.push("Permissões são verificadas no servidor e revogação invalida a sessão");
+  const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
+  if (existsSync(chrome)) {
+    const activeMember = await post("/api/auth/login", { username: "novo.teste", password });
+    const activeMemberCookie = activeMember.headers.get("set-cookie").split(";")[0];
+    await captureLogin(origin, output, join(directory, "chrome"), { master: cookie, member: activeMemberCookie });
+    checks.push("Tela de login renderizada em desktop e celular");
+    checks.push("Menu exclusivo do Master e cadastro de usuário pela interface verificados no navegador");
+  }
   assert.equal((await post("/api/auth/logout", {}, cookie)).status, 200);
   assert.equal((await request("/api/workspace", { headers: { Cookie: cookie } })).status, 401);
   checks.push("Sair revoga o token e bloqueia o acesso anterior");
-  const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
-  if (existsSync(chrome)) {
-    await captureLogin(origin, output, join(directory, "chrome"));
-    checks.push("Tela de login renderizada em desktop e celular");
-  }
   writeFileSync(join(output, "integration-results.json"), JSON.stringify({ passed: true, checks }, null, 2));
   console.log(checks.join("\n"));
 } catch (error) {

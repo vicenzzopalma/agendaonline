@@ -39,6 +39,7 @@ import {
   Info,
   RefreshCw,
   LogOut,
+  UserRoundCog,
 } from "lucide-react";
 import {
   addDays,
@@ -68,6 +69,7 @@ import { HistoryPanel, BookingAudit } from "./history-panel";
 import { useNavigationDrawer } from "../hooks/use-navigation-drawer";
 import { RecipientsField } from "./recipients-field";
 import { InvitationDialog } from "./invitation-dialog";
+import { UserAccessPanel } from "./user-access";
 import {
   normalizeRecipients,
   splitRecipients,
@@ -153,7 +155,7 @@ export default function Workspace() {
   }).format(now);
   const [anchor, setAnchor] = useState(today);
   const [miniMonth, setMiniMonth] = useState(today.slice(0, 7) + "-01");
-  const [tab, setTab] = useState<"calendar" | "rooms" | "mine" | "history">(
+  const [tab, setTab] = useState<"calendar" | "rooms" | "mine" | "history" | "users">(
     "calendar",
   );
   const [view, setView] = useState<"week" | "month" | "list">("week");
@@ -598,6 +600,10 @@ export default function Workspace() {
             <CalendarCheck2 size={19} />
             Meus compromissos
           </button>
+          {data?.user?.isAdmin && <button
+            className={`nav-item ${tab === "users" ? "active" : ""}`}
+            onClick={() => switchTab("users")}
+          ><UserRoundCog size={19} /> Usuários e acessos</button>}
           <button
             className={`nav-item ${tab === "history" ? "active" : ""}`}
             onClick={() => switchTab("history")}
@@ -719,6 +725,8 @@ export default function Workspace() {
                   ? "Meus compromissos"
                   : tab === "history"
                     ? "Histórico"
+                    : tab === "users"
+                      ? "Usuários e acessos"
                     : "Agenda"}
             </strong>
           </div>
@@ -763,6 +771,8 @@ export default function Workspace() {
                     ? "Salas de reunião"
                     : tab === "mine"
                       ? "Meus compromissos"
+                      : tab === "users"
+                        ? "Usuários e acessos"
                       : tab === "history"
                         ? "Histórico da Realess"
                         : "Agenda Realess"}
@@ -770,6 +780,8 @@ export default function Workspace() {
                 <p>
                   {tab === "rooms"
                     ? "Gerencie os espaços da Realess e reserve uma sala quando precisar."
+                    : tab === "users"
+                      ? "Gerencie quem pode entrar na agenda da Realess."
                     : tab === "mine"
                       ? "Seus compromissos e reuniões, organizados em um só lugar."
                       : "Organize o dia, acompanhe compromissos e planeje a semana."}
@@ -856,7 +868,9 @@ export default function Workspace() {
                   {formError}
                 </p>
               )}
-              {tab === "history" ? (
+              {tab === "users" ? (
+                data?.user?.isAdmin ? <UserAccessPanel /> : <p className="form-error" role="alert">Esta área é exclusiva do acesso Master.</p>
+              ) : tab === "history" ? (
                 <HistoryPanel
                   rooms={rooms}
                   revision={historyRevision}

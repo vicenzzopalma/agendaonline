@@ -4,7 +4,7 @@ import { join } from "node:path";
 import assert from "node:assert/strict";
 
 // Uses the installed Chrome with an isolated profile, never the user's browser session.
-export async function captureLogin(origin, output, profile) {
+export async function captureLogin(origin, output, profile, sessions = null) {
   const chrome = spawn("C:/Program Files/Google/Chrome/Application/chrome.exe", ["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { windowsHide: true, stdio: "ignore" });
   let socket;
   try {
@@ -52,6 +52,46 @@ export async function captureLogin(origin, output, profile) {
       assert.equal(layout.result.value.styled, "grid");
       const capture = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
       writeFileSync(join(output, `login-${name}.png`), Buffer.from(capture.data, "base64"));
+    }
+    if (sessions) {
+      const evaluate = async (expression) => {
+        const response = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
+        if (response.exceptionDetails) throw new Error(JSON.stringify(response.exceptionDetails));
+        return response.result?.value;
+      };
+      const waitFor = async (expression) => {
+        for (let attempt = 0; attempt < 100; attempt++) {
+          if (await evaluate(expression)) return;
+          await new Promise((done) => setTimeout(done, 200));
+        }
+        throw new Error(`A interface não ficou pronta: ${expression}`);
+      };
+      const setSession = async (cookie) => {
+        await send("Network.clearBrowserCookies");
+        const index = cookie.indexOf("=");
+        await send("Network.setCookie", { url: origin, name: cookie.slice(0, index), value: cookie.slice(index + 1), httpOnly: true, sameSite: "Strict" });
+      };
+      await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+      await setSession(sessions.master);
+      await send("Page.navigate", { url: origin + "/" });
+      await waitFor("Array.from(document.querySelectorAll('.nav-item')).some(el => el.textContent.includes('Usuários e acessos'))");
+      const order = await evaluate("Array.from(document.querySelectorAll('.nav-item')).map(el => el.textContent.trim())");
+      assert.equal(order.indexOf("Usuários e acessos"), order.indexOf("Meus compromissos") + 1);
+      await evaluate("Array.from(document.querySelectorAll('.nav-item')).find(el => el.textContent.includes('Usuários e acessos')).click()");
+      await waitFor("!!document.querySelector('.access-users-table')");
+      let capture = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+      writeFileSync(join(output, "users-desktop.png"), Buffer.from(capture.data, "base64"));
+      await evaluate("Array.from(document.querySelectorAll('.user-access button')).find(el => el.textContent.includes('Novo usuário')).click()");
+      await waitFor("!!document.querySelector('.access-create-form')");
+      capture = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+      writeFileSync(join(output, "users-create.png"), Buffer.from(capture.data, "base64"));
+      await evaluate("(() => { const f=document.querySelector('.access-create-form'); f.elements.name.value='Usuário de teste visual'; f.elements.username.value='ui.teste'; f.elements.password.value='Senha-teste-visual-943!'; f.requestSubmit(); })()");
+      await waitFor("!document.querySelector('.access-create-form') && document.querySelector('.access-users-table')?.textContent.includes('ui.teste')");
+      await setSession(sessions.member);
+      await send("Page.navigate", { url: origin + "/" });
+      await waitFor("!!document.querySelector('.account-summary strong')?.textContent.trim() && document.querySelector('.account-summary small')?.textContent === 'Colaborador'");
+      assert.equal(await evaluate("Array.from(document.querySelectorAll('.nav-item')).some(el => el.textContent.includes('Usuários e acessos'))"), false);
+      assert.equal(await evaluate("fetch('/api/users').then(r => r.status)"), 403);
     }
     await send("Browser.close");
   } finally { socket?.close(); chrome.kill(); }

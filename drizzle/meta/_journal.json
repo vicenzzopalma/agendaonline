@@ -36,6 +36,13 @@
       "when": 1792700000000,
       "tag": "0004_account_access",
       "breakpoints": false
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1792701000000,
+      "tag": "0005_user_management",
+      "breakpoints": false
     }
   ]
 }
