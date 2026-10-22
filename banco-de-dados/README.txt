@@ -4,4 +4,6 @@ Banco padrão: agenda.sqlite
 Backups:     backups\
 
 Os arquivos SQLite são dados operacionais e não devem ser publicados na web nem enviados ao Git.
-No cPanel, configure AGENDA_DB_PATH com o caminho absoluto da pasta privada de dados do servidor.
+Na Hostinger, o processo PM2 inicia na raiz do projeto e cria agenda.sqlite nesta pasta.
+AGENDA_DB_PATH e AGENDA_BACKUP_DIR do ambiente ou .env permitem configurar outros caminhos privados.
+O cPanel é usado somente para DNS. Preserve esta pasta entre publicações do Git e reinícios.

@@ -768,36 +768,38 @@ export default function Workspace() {
               {tab === "rooms" ? "Adicionar sala" : "Novo compromisso"}
             </button>
           </div>
-          <div className="stats-grid agenda-stats">
-            <Stat
-              icon={<CalendarDays size={20} />}
-              label="Compromissos hoje"
-              value={todayEvents.length}
-              note={fmt(today, {
-                weekday: "long",
-                day: "numeric",
-                month: "short",
-              })}
-              color="green"
-            />
-            <Stat
-              icon={<Clock3 size={20} />}
-              label="Nesta semana"
-              value={data?.stats?.week ?? weekEvents.length}
-              note="Uma visão dos próximos encontros"
-              color="blue"
-            />
-            <Stat
-              icon={<CalendarCheck2 size={20} />}
-              label="Meus compromissos"
-              value={
-                data?.stats?.mine ??
-                weekEvents.filter((e) => e.ownerId === data?.user.id).length
-              }
-              note="Criados neste navegador"
-              color="purple"
-            />
-          </div>
+          {tab === "mine" && (
+            <div className="stats-grid agenda-stats">
+              <Stat
+                icon={<CalendarDays size={20} />}
+                label="Compromissos hoje"
+                value={todayEvents.length}
+                note={fmt(today, {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "short",
+                })}
+                color="green"
+              />
+              <Stat
+                icon={<Clock3 size={20} />}
+                label="Nesta semana"
+                value={data?.stats?.week ?? weekEvents.length}
+                note="Uma visão dos próximos encontros"
+                color="blue"
+              />
+              <Stat
+                icon={<CalendarCheck2 size={20} />}
+                label="Meus compromissos"
+                value={
+                  data?.stats?.mine ??
+                  weekEvents.filter((e) => e.ownerId === data?.user.id).length
+                }
+                note="Criados neste navegador"
+                color="purple"
+              />
+            </div>
+          )}
           {loading ? (
             <div className="loading-panel">
               <LoaderCircle className="spin" size={26} />
@@ -1953,6 +1955,7 @@ export default function Workspace() {
                   onClick={() => setRoomDraft({ ...roomDraft, color: key })}
                 >
                   {roomDraft.color === key && <Check size={17} />}
+                  <span className="color-option-label">{label}</span>
                 </button>
               ))}
             </fieldset>
@@ -2282,6 +2285,19 @@ function WeekView({
                 {day === today && <span className="today-indicator" />}
               </div>
             ))}
+            {days.includes(today) &&
+              minutes(currentTime) >= startHour * 60 &&
+              minutes(currentTime) < endHour * 60 && (
+                <div
+                  className="current-time-line"
+                  style={{
+                    top: `${((minutes(currentTime) - startHour * 60) / 60) * hourHeight}rem`,
+                    right: `${((days.length - days.indexOf(today) - 1) / days.length) * 100}%`,
+                  }}
+                >
+                  <span />
+                </div>
+              )}
           </div>
           <div
             className="week-body"
@@ -2351,19 +2367,6 @@ function WeekView({
                 )}
               </div>
             ))}
-            {days.includes(today) &&
-              minutes(currentTime) >= startHour * 60 &&
-              minutes(currentTime) < endHour * 60 && (
-                <div
-                  className="current-time-line"
-                  style={{
-                    top: `${((minutes(currentTime) - startHour * 60) / 60) * hourHeight}rem`,
-                    right: `${((days.length - days.indexOf(today) - 1) / days.length) * 100}%`,
-                  }}
-                >
-                  <span />
-                </div>
-              )}
           </div>
         </div>
       </div>

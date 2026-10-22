@@ -4,9 +4,9 @@ Agenda compartilhada em português para compromissos, reuniões e reservas das d
 
 ## Hospedagem
 
-O destino definido é **cPanel** no endereço `https://agenda.realess.com.br`. A aplicação precisa de Node.js 22.16 ou superior, um gerenciador de aplicações Node (Passenger/Web Apps) e espaço persistente para o banco SQLite. Veja [Hospedagem cPanel](docs/hospedagem-cpanel.md) antes de enviar os arquivos.
+O site é hospedado na **Hostinger**, no endereço `https://agenda.realess.com.br`. O **cPanel administra somente o DNS**. O fluxo no repositório publica a aplicação na VPS via GitHub Actions e PM2, usando Node.js 22.16 ou superior. Veja [Hospedagem Hostinger](docs/hospedagem-hostinger.md).
 
-O ZIP de `releases/AgendaRealess-Windows.zip` contém executáveis Windows e não deve ser usado no cPanel. Envie o código-fonte, instale dependências e faça o build no Linux da hospedagem.
+O ZIP de `releases/AgendaRealess-Windows.zip` contém executáveis Windows. A publicação da Hostinger usa o código-fonte e compila no Linux da VPS.
 
 ## Desenvolvimento local
 
@@ -25,10 +25,11 @@ Sem `.env`, abra `http://127.0.0.1:3000`. O banco e as migrações são iniciali
 | --- | --- |
 | `npm run dev` | Desenvolvimento local |
 | `npm run build` | Build standalone do Next.js |
-| `npm run start:cpanel` | Inicialização local pelo adaptador Passenger/cPanel |
+| `npm start` | Inicia a aplicação e os backups |
+| `npm run start:cpanel` | Adaptador legado para Passenger, fora do fluxo atual |
 | `npm run backup` | Backup manual verificado |
 | `npm run admin -- list` | Lista navegadores registrados |
 
-O inicializador do cPanel está em `deploy/cpanel/app.cjs`; ele aplica as migrações antes de iniciar o servidor Next.js. Preserve a pasta de dados configurada em `AGENDA_DB_PATH` ao atualizar o código.
+O PM2 usa `ecosystem.config.cjs`, com diretório de trabalho na raiz do projeto. O inicializador aplica as migrações antes de iniciar o Next.js. Por padrão, o banco fica em `banco-de-dados/agenda.sqlite`; variáveis do ambiente têm prioridade sobre os valores do `.env` e os padrões do código. Preserve a pasta do banco ao atualizar.
 
 O envio silencioso de convites pelo Outlook ainda exige uma integração de envio autorizada. O comportamento atual prepara o convite para o aplicativo de e-mail do usuário.
