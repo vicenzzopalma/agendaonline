@@ -3,7 +3,6 @@ import {
   getAgendaVisitor,
   type AgendaVisitor,
 } from "../../../lib/agenda-visitor";
-import { getAuthenticatedUser } from "../../../lib/auth";
 import { workspaceSetupStatements } from "../../../lib/workspace-setup";
 import {
   addDays,
@@ -59,23 +58,10 @@ export async function GET(request: Request) {
   try {
     if (!env.DB) throw new Error("Database unavailable");
     await initialize();
-    const authUser = await getAuthenticatedUser(request);
-    const user: AgendaVisitor = authUser
-      ? {
-          userId: authUser.id,
-          displayName: authUser.name,
-          email: authUser.email,
-          isAdmin: true,
-          tokenHash: authUser.id,
-        }
-      : {
-          userId: "",
-          displayName: "Visitante",
-          email: "",
-          isAdmin: false,
-          tokenHash: "",
-        };
-    const json = (data: unknown, status = 200) => responseJSON(data, status);
+    const visitor = await getAgendaVisitor(request, true),
+      user = visitor.user!;
+    const json = (data: unknown, status = 200) =>
+      responseJSON(data, status, visitor.cookie);
     const db = env.DB,
       params = new URL(request.url).searchParams;
     const rooms = await db.prepare("SELECT * FROM rooms ORDER BY rowid").all();
@@ -252,8 +238,7 @@ export async function GET(request: Request) {
       upcoming: visible(upcoming.results),
       stats: stats.results[0],
       started: true,
-      authenticated: !!authUser,
-      user: authUser ? userInfo(user) : null,
+      user: userInfo(user),
     });
   } catch (error) {
     console.error("Workspace read failed", error);
@@ -266,22 +251,15 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const authUser = await getAuthenticatedUser(request);
-    if (!authUser)
+    const { user } = await getAgendaVisitor(request);
+    if (!user)
       return json(
         {
           error:
-            "Sua sessão expirou ou você não está conectado. Faça login para continuar.",
+            "Atualize a página para continuar. Permita os cookies deste site para salvar seus compromissos.",
         },
-        401,
+        428,
       );
-    const user: AgendaVisitor = {
-      userId: authUser.id,
-      displayName: authUser.name,
-      email: authUser.email,
-      isAdmin: true,
-      tokenHash: authUser.id,
-    };
     if (!allowedOrigin(request))
       return json({ error: "Origem inválida." }, 403);
     if (Number(request.headers.get("content-length") || 0) > 20000)
@@ -584,6 +562,12 @@ export async function POST(request: Request) {
         )
         .run();
     }
+    await db
+      .prepare(
+        "UPDATE agenda_visitors SET display_name=?,email=CASE WHEN is_admin=1 THEN email ELSE ? END WHERE token_hash=?",
+      )
+      .bind(organizerName, organizerEmail, user.tokenHash)
+      .run();
     const booking = await db
       .prepare(`SELECT ${fields} FROM bookings WHERE id=?`)
       .bind(id)

@@ -38,7 +38,6 @@ import {
   CheckCircle2,
   Info,
   RefreshCw,
-  LogOut,
 } from "lucide-react";
 import {
   addDays,
@@ -60,7 +59,6 @@ import {
 import { MeetingLinkField, MeetingLinkDetail } from "./meeting-link";
 import { MiniCalendar, MonthView, nextMonth } from "./calendar-views";
 import { Modal } from "./modal";
-import { AuthView } from "./auth-view";
 import { useHolidays } from "../hooks/use-holidays";
 import { blockedHoliday, holidayMessage, type Holiday } from "../lib/holidays";
 import { HolidayNotice, HolidayToolbar } from "./holiday-indicator";
@@ -180,7 +178,6 @@ export default function Workspace() {
   const [policyOpen, setPolicyOpen] = useState(false);
   const [historyRevision, setHistoryRevision] = useState(0);
   const [showAudit, setShowAudit] = useState(false);
-  const [authModal, setAuthModal] = useState(false);
   const holidayData = useHolidays([
     Number(anchor.slice(0, 4)),
     Number(miniMonth.slice(0, 4)),
@@ -233,19 +230,6 @@ export default function Workspace() {
     },
     [loadFrom, loadTo, showCancelled],
   );
-  async function handleLogout() {
-    try {
-      await fetch("/api/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "logout" }),
-      });
-      setData(null);
-      void refresh();
-    } catch (err) {
-      console.error("Logout failed", err);
-    }
-  }
   useEffect(() => {
     void refresh();
     const interval = setInterval(() => {
@@ -289,19 +273,19 @@ export default function Workspace() {
       (tab !== "mine" || e.ownerId === data?.user?.id),
   );
   const weekStart = view === "week" ? anchor : monday(anchor);
-  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const days = Array.from({ length: 5 }, (_, i) => addDays(weekStart, i));
   const rangeStart = view === "month" ? anchor.slice(0, 7) + "-01" : weekStart;
   const rangeEnd =
     view === "month"
       ? addDays(nextMonth(anchor, 1), -1)
-      : addDays(weekStart, 6);
+      : addDays(weekStart, 4);
   const rangeEvents = filtered
     .filter((e) => e.date >= rangeStart && e.date <= rangeEnd)
     .sort(
       (a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start),
     );
   const weekEvents = activeEvents.filter(
-    (e) => e.date >= weekStart && e.date <= addDays(weekStart, 6),
+    (e) => e.date >= weekStart && e.date <= addDays(weekStart, 4),
   );
   const todayEvents = (data?.todayBookings || activeEvents)
     .filter((e) => e.date === today)
@@ -357,10 +341,6 @@ export default function Workspace() {
     const holiday = blockedHoliday(day, holidays);
     if (holiday) {
       setToast(holidayMessage(holiday));
-      return;
-    }
-    if (!data?.user) {
-      setAuthModal(true);
       return;
     }
     setFormError("");
@@ -735,35 +715,12 @@ export default function Workspace() {
             >
               <CircleHelp size={19} />
             </button>
-            {data?.user ? (
-              <>
-                <div
-                  className="avatar user-avatar"
-                  title={data.user.email ? `${data.user.name} (${data.user.email})` : data.user.name}
-                >
-                  {initials(data.user.name)}
-                </div>
-                <button
-                  type="button"
-                  className="logout-btn"
-                  onClick={handleLogout}
-                  title="Sair da sua conta"
-                >
-                  <LogOut size={14} />
-                  <span>Sair</span>
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                className="button button-primary"
-                style={{ padding: "0.375rem 0.75rem", fontSize: "0.8125rem", minHeight: "2.25rem" }}
-                onClick={() => setAuthModal(true)}
-              >
-                <Users size={15} />
-                <span>Entrar / Cadastrar</span>
-              </button>
-            )}
+            <div
+              className="avatar user-avatar"
+              title={data?.user?.name || "Seu navegador"}
+            >
+              {data?.user ? initials(data.user.name) : "R"}
+            </div>
           </div>
         </header>
         <main id="main-content">
@@ -1037,7 +994,7 @@ export default function Workspace() {
                       <div className="calendar-title">
                         <h2>
                           {view === "week"
-                            ? `${fmt(weekStart, { day: "numeric", month: "short" })} – ${fmt(addDays(weekStart, 6), { day: "numeric", month: "short", year: "numeric" })}`
+                            ? `${fmt(weekStart, { day: "numeric", month: "short" })} – ${fmt(addDays(weekStart, 4), { day: "numeric", month: "short", year: "numeric" })}`
                             : fmt(anchor, {
                                 month: "long",
                                 year: "numeric",
@@ -1871,6 +1828,10 @@ export default function Workspace() {
                 </select>
               </label>
             </div>
+            <MeetingLinkField
+              value={draft.link}
+              onChange={(link) => setDraft({ ...draft, link })}
+            />
             {draftConflict ? (
               <div className="conflict-note" role="alert">
                 <Info size={17} />
@@ -1889,10 +1850,6 @@ export default function Workspace() {
                 </div>
               )
             )}
-            <MeetingLinkField
-              value={draft.link}
-              onChange={(link) => setDraft({ ...draft, link })}
-            />
             {draftHoliday && (
               <p className="form-error" role="alert">
                 {holidayMessage(draftHoliday)}
@@ -2201,21 +2158,6 @@ export default function Workspace() {
           }}
         />
       )}
-      {authModal && (
-        <Modal
-          title="Acesso à Agenda"
-          subtitle="Entre ou cadastre-se para criar reuniões"
-          onClose={() => setAuthModal(false)}
-        >
-          <AuthView
-            isModal
-            onSuccess={() => {
-              setAuthModal(false);
-              void refresh();
-            }}
-          />
-        </Modal>
-      )}
       {help && (
         <Modal
           title="Uma agenda para conectar a Realess"
@@ -2348,14 +2290,14 @@ function WeekView({
     ...visible.map((e) => Math.ceil(minutes(e.end) / 60)),
   );
   const hourCount = endHour - startHour;
-  const hourHeight = 4.25; // rem
+  const hourHeight = 5.75; // rem
   const calendarMinWidth = Math.max(1100, days.length * 190);
 
   return (
     <div className="week-scroll-container">
       <div className="week-scroll-nav">
         <span className="week-scroll-nav-text">
-          Mostrando <strong>{days.length} dias</strong> a partir de {days[0] === today ? "Hoje" : fmt(days[0], { day: "numeric", month: "short" })}
+          Mostrando <strong>{days.length} dias úteis</strong> a partir de {days[0] === today ? "Hoje" : fmt(days[0], { day: "numeric", month: "short" })}
         </span>
         <div className="week-scroll-nav-buttons">
           <button
@@ -2480,7 +2422,7 @@ function WeekView({
                         className={`calendar-event ${isNow ? "is-now" : isPast ? "event-past" : "event-future"} ${event.status === "cancelled" ? "is-cancelled" : ""} color-${eventColor(event)} ${isShort ? "short-event" : ""}`}
                         style={{
                           top: `${((minutes(event.start) - startHour * 60) / 60) * hourHeight + 0.0625}rem`,
-                          height: `${Math.max(2.125, (durationMins / 60) * hourHeight - 0.25)}rem`,
+                          height: `${Math.max(2.75, (durationMins / 60) * hourHeight - 0.125)}rem`,
                           left: `calc(${(lane / lanes) * 100}% + 4px)`,
                           width: `calc(${100 / lanes}% - 8px)`,
                         }}
@@ -2509,7 +2451,7 @@ function WeekView({
                                 )}
                                 <span>{eventLocation(event)}</span>
                               </span>
-                              {event.ownerName && event.ownerName.trim().toLowerCase() !== event.title.trim().toLowerCase() && (
+                              {event.ownerName && (
                                 <span
                                   className="event-meta-person"
                                   title={`Marcado por ${event.ownerName}`}
