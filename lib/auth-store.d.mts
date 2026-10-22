@@ -1,0 +1,13 @@
+import type { LocalDatabase } from "../db/local-sqlite.mjs";
+export type SessionUser = { id: string; name: string; email: string; username: string; role: "member" | "master"; tokenHash: string; isAdmin: boolean };
+export const SESSION_SECONDS: number;
+export function sessionCookieName(origin: string): string;
+export function readSessionToken(header: string | null, origin: string): string | null;
+export function sessionCookie(origin: string, token: string, maxAge?: number): string;
+export function hashPassword(password: string): Promise<string>;
+export function verifyPassword(password: string, encoded?: string | null): Promise<boolean>;
+export function provisionMaster(passwordHash: string, database?: LocalDatabase): boolean;
+export function bootstrapMaster(database?: LocalDatabase): void;
+export function getSessionUser(header: string | null, origin: string, database?: LocalDatabase, now?: number): SessionUser | null;
+export function signIn(username: unknown, password: unknown, oldToken?: string | null, database?: LocalDatabase, now?: number): Promise<{ ok: boolean; status?: number; retryAfter?: number; token?: string }>;
+export function signOut(header: string | null, origin: string, database?: LocalDatabase): void;

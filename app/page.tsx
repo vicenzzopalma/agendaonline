@@ -1,2 +1,11 @@
 import Workspace from "./workspace";
-export default function Home() { return <Workspace />; }
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { getSessionUser } from "../lib/auth-store.mjs";
+import { publicOrigin } from "../lib/runtime";
+
+export default async function Home() {
+  const user = getSessionUser((await cookies()).toString(), publicOrigin());
+  if (!user) redirect("/login");
+  return <Workspace />;
+}

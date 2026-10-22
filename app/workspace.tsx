@@ -38,6 +38,7 @@ import {
   CheckCircle2,
   Info,
   RefreshCw,
+  LogOut,
 } from "lucide-react";
 import {
   addDays,
@@ -211,6 +212,7 @@ export default function Workspace() {
         const body = (await response.json()) as Data & {
           error?: string;
         };
+        if (response.status === 401) { window.location.replace("/login"); return; }
         if (sequence !== requestSequence.current) return;
         if (!response.ok) {
           throw new Error(body.error || "Não foi possível carregar a agenda.");
@@ -324,6 +326,8 @@ export default function Workspace() {
     roomById(event.roomId)?.color ||
     (event.kind === "focus" ? "purple" : "green");
   const eventLocation = (event: Booking) => bookingLocation(event, rooms);
+  const canManageBooking = (event: Booking) =>
+    !!data?.user && (data.user.isAdmin === true || event.ownerId === data.user.id);
   const changeAnchor = (day: string) => {
     const holiday = blockedHoliday(day, holidays);
     if (holiday) setToast(holidayMessage(holiday));
@@ -343,6 +347,7 @@ export default function Workspace() {
         : [...previous, id],
     );
   function newBooking(day = anchor, start?: string, roomId = "") {
+    if (!data?.user) { setToast("Aguarde a agenda terminar de carregar."); return; }
     setLegacyRecipients([]);
     if (!start) {
       if (day === today && minutes(currentTime) < 23 * 60)
@@ -369,8 +374,7 @@ export default function Workspace() {
       description: "",
       participants: "",
       link: "",
-      organizerName:
-        data?.user?.name === "Visitante" ? "" : data?.user?.name || "",
+      organizerName: data.user.name,
       organizerEmail: data?.user?.email || "",
     });
   }
@@ -389,6 +393,7 @@ export default function Workspace() {
         booking?: Booking;
         removedInvitation?: Booking;
       };
+      if (response.status === 401) { window.location.replace("/login"); return false; }
       if (!response.ok)
         throw new Error(result.error || "Não foi possível salvar.");
       await refresh(true);
@@ -732,10 +737,18 @@ export default function Workspace() {
             </button>
             <div
               className="avatar user-avatar"
-              title={data?.user?.name || "Seu navegador"}
+              title={data?.user?.name || "Sua conta"}
             >
               {data?.user ? initials(data.user.name) : "R"}
             </div>
+            <span className="account-summary"><strong>{data?.user?.name}</strong><small>{data?.user?.isAdmin ? "Master" : "Colaborador"}</small></span>
+            <button className="button button-secondary account-logout" onClick={async () => {
+              try {
+                const response = await fetch("/api/auth/logout", { method: "POST" });
+                if (!response.ok) throw new Error();
+                window.location.replace("/login");
+              } catch { setToast("Não foi possível sair. Tente novamente."); }
+            }}><LogOut size={16} /> Sair</button>
           </div>
         </header>
         <main id="main-content">
@@ -812,7 +825,7 @@ export default function Workspace() {
                   data?.stats?.mine ??
                   weekEvents.filter((e) => e.ownerId === data?.user?.id).length
                 }
-                note="Criados neste navegador"
+                note="Vinculados à sua conta"
                 color="purple"
               />
             </div>
@@ -1542,7 +1555,7 @@ export default function Workspace() {
               onCopy={copyMeetingLink}
               onAddLink={
                 selected.status !== "cancelled" &&
-                (selected.demo || selected.ownerId === data?.user?.id)
+                (selected.demo || canManageBooking(selected))
                   ? () => editBooking(selected)
                   : undefined
               }
@@ -1660,7 +1673,7 @@ export default function Workspace() {
                 </span>
               )}
             </div>
-            {selected.ownerId === data?.user?.id && (
+            {canManageBooking(selected) && (
               <BookingAudit key={selected.id} bookingId={selected.id} />
             )}
             {selected.description && (
@@ -1668,7 +1681,7 @@ export default function Workspace() {
             )}
           </div>
           <div className="modal-actions detail-actions">
-            {selected.ownerId === data?.user?.id && selected.participants && (
+            {canManageBooking(selected) && selected.participants && (
               <button
                 type="button"
                 className="button button-secondary"
@@ -1694,7 +1707,7 @@ export default function Workspace() {
               Exportar
             </button>
             {selected.status !== "cancelled" &&
-              (selected.demo || selected.ownerId === data?.user?.id) && (
+              (selected.demo || canManageBooking(selected)) && (
                 <>
                   <button
                     className="button button-primary"
@@ -1745,11 +1758,10 @@ export default function Workspace() {
                   maxLength={80}
                   autoComplete="name"
                   value={draft.organizerName}
-                  placeholder="Seu nome"
-                  onChange={(e) =>
-                    setDraft({ ...draft, organizerName: e.target.value })
-                  }
+                  readOnly
+                  aria-describedby="organizer-account-note"
                 />
+                <small id="organizer-account-note">Nome vinculado ao login do organizador.</small>
               </label>
               <label>
                 E-mail do organizador <span className="optional">opcional</span>
@@ -1764,8 +1776,7 @@ export default function Workspace() {
                   }
                 />
                 <small>
-                  Usado para gerar o convite .ics no Outlook. Não é necessário
-                  criar uma conta.
+                  Usado para gerar o convite .ics no Outlook.
                 </small>
               </label>
             </div>
@@ -1901,10 +1912,8 @@ export default function Workspace() {
               Todos os horários seguem o fuso de São Paulo (GMT−3).
             </div>
             <p className="form-footnote">
-              A edição e a lista de participantes ficam vinculadas a este
-              navegador. Ao trocar de navegador ou limpar os cookies, você
-              poderá consultar os compromissos, mas perderá a permissão de
-              editá-los.
+              Os compromissos ficam vinculados à conta do organizador.
+              O acesso master pode editar e excluir qualquer compromisso.
             </p>
             <div className="modal-actions">
               <button
@@ -2209,11 +2218,9 @@ export default function Workspace() {
                 <h3>Sua equipe, na mesma página</h3>
                 <p>
                   Os compromissos ficam salvos e a agenda atualiza a cada 30
-                  segundos. Qualquer pessoa com o link pode consultar a agenda e
-                  criar compromissos, sem login. A edição, o cancelamento e a
-                  lista de participantes ficam vinculados ao navegador que criou
-                  o compromisso. Limpar os cookies ou trocar de navegador remove
-                  essa permissão de edição.
+                  segundos. O acesso é exclusivo a usuários cadastrados, com
+                  login e senha. Cada pessoa gerencia seus compromissos, e o
+                  acesso master pode administrar todas as reuniões.
                 </p>
               </section>
             </div>

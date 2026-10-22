@@ -10,6 +10,7 @@ export async function GET(request: Request) {
     );
   try {
     const { user } = await getAgendaVisitor(request);
+    if (!user) return Response.json({ error: "Entre com seu login para consultar a agenda." }, { status: 401, headers: { "Cache-Control": "no-store" } });
     return Response.json(
       await getHolidayYear(year, !!user && isCalendarAdmin(user)),
       {

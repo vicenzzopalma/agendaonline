@@ -104,6 +104,9 @@ export const users = sqliteTable(
     name: text("name").notNull(),
     email: text("email").notNull().unique(),
     passwordHash: text("password_hash").notNull(),
+    username: text("username").unique(),
+    role: text("role").notNull().default("member"),
+    active: integer("active").notNull().default(1),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
@@ -120,4 +123,10 @@ export const sessions = sqliteTable(
   },
   (table) => [index("sessions_user_idx").on(table.userId)],
 );
+
+export const loginAttempts = sqliteTable("login_attempts", {
+  keyHash: text("key_hash").primaryKey(),
+  attempts: integer("attempts").notNull(),
+  windowStart: integer("window_start").notNull(),
+});
 

@@ -58,8 +58,9 @@ export async function GET(request: Request) {
   try {
     if (!env.DB) throw new Error("Database unavailable");
     await initialize();
-    const visitor = await getAgendaVisitor(request, true),
-      user = visitor.user!;
+    const visitor = await getAgendaVisitor(request),
+      user = visitor.user;
+    if (!user) return responseJSON({ error: "Entre com seu login para acessar a agenda." }, 401);
     const json = (data: unknown, status = 200) =>
       responseJSON(data, status, visitor.cookie);
     const db = env.DB,
@@ -83,7 +84,7 @@ export async function GET(request: Request) {
         .prepare("SELECT owner_id AS ownerId FROM bookings WHERE id=?")
         .bind(clean(params.get("audit"), 100))
         .first<{ ownerId: string }>();
-      if (!owner || owner.ownerId !== user.userId)
+      if (!owner || (owner.ownerId !== user.userId && !user.isAdmin))
         return json(
           {
             error:
@@ -256,11 +257,11 @@ export async function POST(request: Request) {
       return json(
         {
           error:
-            "Atualize a página para continuar. Permita os cookies deste site para salvar seus compromissos.",
+            "Sua sessão expirou. Entre novamente para continuar.",
         },
-        428,
+        401,
       );
-    if (!allowedOrigin(request))
+    if (!request.headers.get("origin") || !allowedOrigin(request))
       return json({ error: "Origem inválida." }, 403);
     if (Number(request.headers.get("content-length") || 0) > 20000)
       return json({ error: "Dados muito extensos." }, 413);
@@ -376,6 +377,8 @@ export async function POST(request: Request) {
         { error: "Compromisso não encontrado." },
         404,
       );
+    if (existing && existing.ownerId !== user.userId && !user.isAdmin)
+      return json({ error: "Você pode alterar ou excluir somente seus compromissos." }, 403);
     if (existing?.status === "cancelled")
       return json(
         {
@@ -492,7 +495,7 @@ export async function POST(request: Request) {
     } catch (error) {
       return json({ error: (error as Error).message }, 400);
     }
-    const organizerName = clean(body.organizerName, 80) || user.displayName;
+    const organizerName = existing?.ownerName || user.displayName;
     const organizerEmail =
       body.organizerEmail === undefined
         ? existing?.organizerEmail || user.email
@@ -562,12 +565,6 @@ export async function POST(request: Request) {
         )
         .run();
     }
-    await db
-      .prepare(
-        "UPDATE agenda_visitors SET display_name=?,email=CASE WHEN is_admin=1 THEN email ELSE ? END WHERE token_hash=?",
-      )
-      .bind(organizerName, organizerEmail, user.tokenHash)
-      .run();
     const booking = await db
       .prepare(`SELECT ${fields} FROM bookings WHERE id=?`)
       .bind(id)

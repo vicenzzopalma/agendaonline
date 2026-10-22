@@ -1,6 +1,6 @@
 # Agenda Realess
 
-Agenda compartilhada em português para compromissos, reuniões e reservas das duas salas da Realess. Inclui links do Google Meet, participantes, convites de calendário, feriados brasileiros, histórico permanente e identidade visual da empresa. O acesso é livre pelo link e não exige conta da OpenAI.
+Agenda compartilhada em português para compromissos, reuniões e reservas das duas salas da Realess. Inclui links do Google Meet, participantes, convites de calendário, feriados brasileiros, histórico permanente e identidade visual da empresa. O acesso exige login e senha próprios da Realess. Nesta etapa, somente `arthur.hille` é provisionado como master. Veja [Acesso e ativação do login](docs/ACESSO-LOGIN.md).
 
 ## Hospedagem
 
@@ -19,6 +19,8 @@ npm run dev
 
 Sem `.env`, abra `http://127.0.0.1:3000`. O banco e as migrações são inicializados automaticamente; horários seguem o fuso de São Paulo.
 
+Em um banco novo, execute `npm run auth:master` no terminal antes de entrar. A senha é solicitada de forma oculta. A aplicação permanece bloqueada sem uma conta provisionada.
+
 ## Comandos
 
 | Comando | Uso |
@@ -28,7 +30,7 @@ Sem `.env`, abra `http://127.0.0.1:3000`. O banco e as migrações são iniciali
 | `npm start` | Inicia a aplicação e os backups |
 | `npm run start:cpanel` | Adaptador legado para Passenger, fora do fluxo atual |
 | `npm run backup` | Backup manual verificado |
-| `npm run admin -- list` | Lista navegadores registrados |
+| `npm run auth:master` | Cria o acesso master, sem sobrescrever uma conta existente |
 
 O PM2 usa `ecosystem.config.cjs`, com diretório de trabalho na raiz do projeto. O inicializador aplica as migrações antes de iniciar o Next.js. Por padrão, o banco fica em `banco-de-dados/agenda.sqlite`; variáveis do ambiente têm prioridade sobre os valores do `.env` e os padrões do código. Preserve a pasta do banco ao atualizar.
 

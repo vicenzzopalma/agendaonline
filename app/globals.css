@@ -1,6 +1,89 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&family=Manrope:wght@400;500;600;650;700;750;800&display=swap");
 @import "tailwindcss";
 
+/* Entrada privada da Agenda Realess */
+.login-page {
+  min-height: 100svh;
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  background: #fbfaf8;
+}
+.login-brand-panel {
+  position: relative;
+  overflow: hidden;
+  background: #1e2637;
+  color: #f6f3ee;
+  padding: clamp(2rem, 5vw, 5rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 4rem;
+}
+.login-brand-panel::after {
+  content: "";
+  position: absolute;
+  width: 40rem;
+  height: 40rem;
+  border: 1px solid #b09e8022;
+  border-radius: 50%;
+  bottom: -28rem;
+  right: -14rem;
+  box-shadow: 0 0 0 5rem #b09e8006, 0 0 0 10rem #b09e8004;
+  pointer-events: none;
+}
+.login-brand-top { display: flex; align-items: center; gap: .65rem; font-size: .7rem; letter-spacing: .15em; color: #d2c4ad; }
+.login-brand-dot { width: .4rem; height: .4rem; border-radius: 50%; background: #b09e80; }
+.login-brand-center { position: relative; z-index: 1; width: 100%; max-width: 34rem; margin: auto 0; }
+.login-logo-window { width: 100%; max-width: 31rem; aspect-ratio: 4; overflow: hidden; position: relative; margin-bottom: 3.5rem; }
+.login-logo-window img { position: absolute; top: 50%; left: 0; width: 100%; height: auto; transform: translateY(-50%); }
+.login-brand-rule { display: block; width: 3rem; height: 2px; background: #b09e80; margin-bottom: 1.7rem; }
+.login-brand-center h1 { font: 600 clamp(2rem, 3.2vw, 3.2rem)/1.25 var(--font-display); letter-spacing: -.045em; }
+.login-brand-center p { color: #c2cad6; font-size: 1rem; line-height: 1.85; margin-top: 1.25rem; }
+.login-brand-footer { display: flex; flex-wrap: wrap; gap: .5rem 1rem; justify-content: space-between; font-size: .65rem; color: #d2c4ad; letter-spacing: .1em; }
+.login-brand-footer span { color: #b2bac7; }
+.login-form-panel { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 5rem 3rem 2rem; gap: 4rem; }
+.login-form-wrap { width: 100%; max-width: 27rem; margin: auto 0; }
+.login-eyebrow { font-size: .7rem; color: #775d37; font-weight: 650; letter-spacing: .12em; }
+.login-form-wrap h2 { font: 750 clamp(1.8rem, 2.3vw, 2.5rem)/1.3 var(--font-display); letter-spacing: -.045em; margin-top: .9rem; }
+.login-intro { margin: 1rem 0 2.5rem; color: #526176; font-size: 1rem; line-height: 1.75; }
+.login-form { display: flex; flex-direction: column; gap: .65rem; }
+.login-form > label { color: #24344c; font-size: .9rem; font-weight: 650; }
+.login-form > label:not(:first-child) { margin-top: .8rem; }
+.login-input-wrap { display: flex; align-items: center; gap: .75rem; border: 1px solid #c9d0da; background: white; border-radius: .6rem; padding: 0 1rem; min-height: 3.6rem; color: #657086; }
+.login-input-wrap:focus-within { border-color: #957c53; box-shadow: 0 0 0 3px #b09e8024; }
+.login-input-wrap > svg { flex-shrink: 0; }
+.login-input-wrap input { width: 100%; min-width: 0; color: #192537; border: 0; outline: none; background: transparent; padding: 1rem 0; font-size: 1rem; }
+.login-input-wrap input:focus-visible { outline: none; }
+.login-input-wrap input::placeholder { color: #68778a; }
+.login-password-toggle { display: grid; place-items: center; min-width: 2.5rem; min-height: 2.75rem; border-radius: .3rem; }
+.login-password-toggle:hover { color: #192537; background: #f3f0eb; }
+.login-submit { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 3.6rem; border-radius: .6rem; padding: .9rem 1.2rem; background: #192537; color: white; font-size: 1rem; font-weight: 650; margin-top: 1.2rem; box-shadow: 0 .3rem .6rem #19253712; }
+.login-submit:hover { background: #2c405e; }
+.login-submit:disabled { opacity: .7; }
+.login-error { background: #fff0ed; border: 1px solid #d9aaa2; border-radius: .5rem; padding: .8rem 1rem; color: #8b2d22; font-size: .9rem; margin-top: .5rem; }
+.login-help { margin-top: 1.8rem; color: #526176; font-size: .85rem; line-height: 1.7; }
+.login-access-note { display: flex; align-items: center; justify-content: center; gap: .5rem; font-size: .8rem; color: #526176; text-align: center; }
+.login-access-note span { width: .4rem; height: .4rem; background: #947c57; border-radius: 50%; flex-shrink: 0; }
+.account-summary { display: flex; flex-direction: column; line-height: 1.3; font-size: .8rem; }
+.account-summary small { color: #765b33; font-size: .7rem; }
+.account-logout { min-height: 2.5rem; padding: .5rem .7rem; }
+.booking-form input[readonly] { background: #f4f6f9; color: #334863; }
+@media (max-width: 760px) {
+  .login-page { grid-template-columns: 1fr; }
+  .login-brand-panel { padding: 1.8rem 1.6rem; gap: 2rem; }
+  .login-brand-top { font-size: .6rem; }
+  .login-brand-center { margin: 0 auto; max-width: 26rem; }
+  .login-logo-window { max-width: 21rem; margin: 0 auto 1.5rem; }
+  .login-brand-rule { display: none; }
+  .login-brand-center h1 { font-size: 1.6rem; text-align: center; }
+  .login-brand-center h1 br { display: none; }
+  .login-brand-center p, .login-brand-footer { display: none; }
+  .login-form-panel { padding: 2.5rem 1.6rem 1.5rem; gap: 2.5rem; }
+  .login-form-wrap h2 { font-size: 1.9rem; }
+  .login-intro { margin-bottom: 1.8rem; }
+  .account-summary { display: none; }
+}
+
 /* Brand colors from realess.com.br. Dark text carries the contrast;
    the original gold is used on the navigation, accents, and surfaces. */
 :root {

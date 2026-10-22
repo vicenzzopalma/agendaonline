@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   serverExternalPackages: ["node:sqlite"],
   outputFileTracingIncludes: { "/*": ["./drizzle/*.sql"] },
+  outputFileTracingExcludes: { "/**": ["./banco-de-dados/**/*", "./outputs/**/*", "./runtime/**/*", "./.env*"] },
   async headers() {
     return [{ source: "/:path*", headers: [
       { key: "X-Content-Type-Options", value: "nosniff" },

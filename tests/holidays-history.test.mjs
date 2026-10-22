@@ -19,10 +19,8 @@ const oldSQL = readFileSync(
     new URL("../drizzle/0000_plain_cassandra_nova.sql", import.meta.url),
     "utf8",
   ),
-  newSQL = readFileSync(
-    new URL("../drizzle/0001_whole_terror.sql", import.meta.url),
-    "utf8",
-  );
+  newSQL = ["0001_whole_terror.sql", "0002_cheerful_sharon_carter.sql", "0003_auth_and_creators.sql", "0004_account_access.sql"]
+    .map((name) => readFileSync(new URL(`../drizzle/${name}`, import.meta.url), "utf8")).join("\n");
 const setup = (db) => {
   for (const sql of workspaceSetupStatements) db.exec(sql);
 };

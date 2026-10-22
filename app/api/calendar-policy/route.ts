@@ -8,12 +8,13 @@ import { validDate, type CalendarPolicy } from "../../../lib/holidays";
 
 export async function POST(request: Request) {
   const { user } = await getAgendaVisitor(request);
+  if (!user) return Response.json({ error: "Entre com seu login para continuar." }, { status: 401, headers: { "Cache-Control": "no-store" } });
   if (!user || !isCalendarAdmin(user))
     return Response.json(
       { error: "Somente administradores podem alterar o calendário." },
       { status: 403 },
     );
-  if (!allowedOrigin(request))
+  if (!request.headers.get("origin") || !allowedOrigin(request))
     return Response.json({ error: "Origem inválida." }, { status: 403 });
   try {
     if (Number(request.headers.get("content-length") || 0) > 60000)

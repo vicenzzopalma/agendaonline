@@ -13,6 +13,7 @@
     "start:cpanel": "node deploy/cpanel/app.cjs",
     "backup": "node scripts/selfhost/backup.mjs",
     "admin": "node scripts/selfhost/admin.mjs",
+    "auth:master": "node scripts/selfhost/create-master.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },
