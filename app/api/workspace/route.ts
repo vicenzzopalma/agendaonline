@@ -225,7 +225,7 @@ export async function GET(request: Request) {
         .prepare(
           "SELECT COUNT(*) AS week,SUM(CASE WHEN owner_id=? THEN 1 ELSE 0 END) AS mine FROM bookings WHERE date>=? AND date<=? AND status='active'",
         )
-        .bind(user.userId, week, addDays(week, 6)),
+        .bind(user.userId, week, addDays(week, 4)),
     ]);
     return json({
       rooms: rooms.results,
