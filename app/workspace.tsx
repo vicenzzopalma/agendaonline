@@ -180,6 +180,7 @@ export default function Workspace() {
   const [policyOpen, setPolicyOpen] = useState(false);
   const [historyRevision, setHistoryRevision] = useState(0);
   const [showAudit, setShowAudit] = useState(false);
+  const [authModal, setAuthModal] = useState(false);
   const holidayData = useHolidays([
     Number(anchor.slice(0, 4)),
     Number(miniMonth.slice(0, 4)),
@@ -232,6 +233,19 @@ export default function Workspace() {
     },
     [loadFrom, loadTo, showCancelled],
   );
+  async function handleLogout() {
+    try {
+      await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "logout" }),
+      });
+      setData(null);
+      void refresh();
+    } catch (err) {
+      console.error("Logout failed", err);
+    }
+  }
   useEffect(() => {
     void refresh();
     const interval = setInterval(() => {
@@ -343,6 +357,10 @@ export default function Workspace() {
     const holiday = blockedHoliday(day, holidays);
     if (holiday) {
       setToast(holidayMessage(holiday));
+      return;
+    }
+    if (!data?.user) {
+      setAuthModal(true);
       return;
     }
     setFormError("");
@@ -717,12 +735,35 @@ export default function Workspace() {
             >
               <CircleHelp size={19} />
             </button>
-            <div
-              className="avatar user-avatar"
-              title={data?.user?.name || "Seu navegador"}
-            >
-              {data?.user ? initials(data.user.name) : "R"}
-            </div>
+            {data?.user ? (
+              <>
+                <div
+                  className="avatar user-avatar"
+                  title={data.user.email ? `${data.user.name} (${data.user.email})` : data.user.name}
+                >
+                  {initials(data.user.name)}
+                </div>
+                <button
+                  type="button"
+                  className="logout-btn"
+                  onClick={handleLogout}
+                  title="Sair da sua conta"
+                >
+                  <LogOut size={14} />
+                  <span>Sair</span>
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="button button-primary"
+                style={{ padding: "0.375rem 0.75rem", fontSize: "0.8125rem", minHeight: "2.25rem" }}
+                onClick={() => setAuthModal(true)}
+              >
+                <Users size={15} />
+                <span>Entrar / Cadastrar</span>
+              </button>
+            )}
           </div>
         </header>
         <main id="main-content">
@@ -2159,6 +2200,21 @@ export default function Workspace() {
             setToast("Calendário da empresa atualizado.");
           }}
         />
+      )}
+      {authModal && (
+        <Modal
+          title="Acesso à Agenda"
+          subtitle="Entre ou cadastre-se para criar reuniões"
+          onClose={() => setAuthModal(false)}
+        >
+          <AuthView
+            isModal
+            onSuccess={() => {
+              setAuthModal(false);
+              void refresh();
+            }}
+          />
+        </Modal>
       )}
       {help && (
         <Modal

@@ -60,28 +60,31 @@ export async function GET(request: Request) {
     if (!env.DB) throw new Error("Database unavailable");
     await initialize();
     const authUser = await getAuthenticatedUser(request);
-    if (!authUser) {
-      return responseJSON({
-        authenticated: false,
-        user: null,
-        rooms: [],
-        bookings: [],
-        started: true,
-      });
-    }
-    const user: AgendaVisitor = {
-      userId: authUser.id,
-      displayName: authUser.name,
-      email: authUser.email,
-      isAdmin: true,
-      tokenHash: authUser.id,
-    };
+    const user: AgendaVisitor = authUser
+      ? {
+          userId: authUser.id,
+          displayName: authUser.name,
+          email: authUser.email,
+          isAdmin: true,
+          tokenHash: authUser.id,
+        }
+      : {
+          userId: "",
+          displayName: "Visitante",
+          email: "",
+          isAdmin: false,
+          tokenHash: "",
+        };
     const json = (data: unknown, status = 200) => responseJSON(data, status);
     const db = env.DB,
       params = new URL(request.url).searchParams;
     const rooms = await db.prepare("SELECT * FROM rooms ORDER BY rowid").all();
     const visible = (rows: unknown[]) =>
-      (rows as Booking[]).map((row) => visibleBooking(row, user.userId));
+      (rows as Booking[]).map((row) => ({
+        ...row,
+        createdByName: row.createdByName || row.ownerName,
+        createdByEmail: row.createdByEmail || row.organizerEmail || "",
+      }));
     const today = dateKey(new Date()),
       time = new Intl.DateTimeFormat("pt-BR", {
         timeZone: "America/Sao_Paulo",
@@ -249,7 +252,8 @@ export async function GET(request: Request) {
       upcoming: visible(upcoming.results),
       stats: stats.results[0],
       started: true,
-      user: userInfo(user),
+      authenticated: !!authUser,
+      user: authUser ? userInfo(user) : null,
     });
   } catch (error) {
     console.error("Workspace read failed", error);

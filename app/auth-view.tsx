@@ -5,9 +5,10 @@ import { ArrowRight, Check, LoaderCircle, Lock, Mail, User, Sparkles } from "luc
 
 type AuthViewProps = {
   onSuccess: () => void;
+  isModal?: boolean;
 };
 
-export function AuthView({ onSuccess }: AuthViewProps) {
+export function AuthView({ onSuccess, isModal = false }: AuthViewProps) {
   const [tab, setTab] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -46,9 +47,9 @@ export function AuthView({ onSuccess }: AuthViewProps) {
     }
   }
 
-  return (
-    <div className="auth-wrapper">
-      <div className="auth-card">
+  const content = (
+    <div className={isModal ? "auth-card-modal" : "auth-card"}>
+      {!isModal && (
         <div className="auth-brand">
           <img
             className="brand-logo auth-logo"
@@ -67,6 +68,7 @@ export function AuthView({ onSuccess }: AuthViewProps) {
               : "Cadastre-se em segundos para agendar salas e reuniões para qualquer pessoa."}
           </p>
         </div>
+      )}
 
         <div className="auth-tabs" role="tablist">
           <button
@@ -217,6 +219,11 @@ export function AuthView({ onSuccess }: AuthViewProps) {
           )}
         </div>
       </div>
-    </div>
   );
+
+  if (isModal) {
+    return content;
+  }
+
+  return <div className="auth-wrapper">{content}</div>;
 }
