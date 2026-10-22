@@ -19,4 +19,4 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
           script: |
-            /var/www/agenda/deploy_vps.sh
+            bash /var/www/agenda/deploy_vps.sh
