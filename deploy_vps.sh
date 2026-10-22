@@ -31,7 +31,10 @@ if [ -d ".next/standalone" ]; then
     cp .env .next/standalone/ 2>/dev/null || true
 fi
 
-# 6. Reiniciar no PM2
+# 6. Liberar porta caso haja processo pendente
+fuser -k 7001/tcp 2>/dev/null || true
+
+# 7. Reiniciar no PM2
 echo "🔄 4. Reiniciando agenda-realess no PM2..."
 pm2 restart agenda-realess --update-env
 pm2 save
