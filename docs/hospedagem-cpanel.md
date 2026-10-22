@@ -24,7 +24,7 @@ Node.js 22.16 é necessário porque a aplicação usa o módulo SQLite integrado
    - `PUBLIC_URL=https://agenda.realess.com.br`
    - `TZ=America/Sao_Paulo`
 
-   Por padrão, o inicializador grava em `banco-de-dados/agenda.sqlite` e cria os backups em `banco-de-dados/backups`, dentro da pasta privada do aplicativo. Se preferir outro local privado, configure `AGENDA_DB_PATH` e `AGENDA_BACKUP_DIR` com caminhos absolutos fora de `public_html`. Confirme que o processo Node pode gravar na pasta. Não configure `PORT`: o Passenger fornece a porta da aplicação.
+   O inicializador grava o banco novo em `banco-de-dados/agenda.sqlite` e cria os backups em `banco-de-dados/backups`, dentro da pasta privada do aplicativo. Ele define esses caminhos diretamente para iniciar um banco limpo nesta instalação. Confirme que o processo Node pode gravar na pasta. Não configure `PORT`: o Passenger fornece a porta da aplicação.
 
 ## Enviar e compilar o projeto
 
@@ -44,10 +44,10 @@ Faça as atualizações pelo Git/SSH ou envie a nova versão dos arquivos. Prese
 Configure um Cron Job diário no cPanel para criar cópia do banco. O comando precisa usar o Node.js da aplicação e os mesmos caminhos de banco e backup definidos no cPanel. O executável do Node e a forma de passar variáveis ao Cron Job dependem do provedor. Uma forma comum é:
 
 ```bash
-cd /home/USUARIO/agenda-app && AGENDA_DB_PATH=/home/USUARIO/agenda-data/agenda.sqlite AGENDA_BACKUP_DIR=/home/USUARIO/agenda-data/backups /CAMINHO/DO/NODE scripts/selfhost/backup.mjs
+cd /home/USUARIO/agenda-app && AGENDA_DB_PATH=/home/USUARIO/agenda-app/banco-de-dados/agenda.sqlite AGENDA_BACKUP_DIR=/home/USUARIO/agenda-app/banco-de-dados/backups /CAMINHO/DO/NODE scripts/selfhost/backup.mjs
 ```
 
-Substitua os caminhos pelo usuário, raiz do app, pasta persistente e executável Node reais da conta. Depois, confirme que o backup apareceu e mantenha uma cópia fora da conta cPanel.
+Substitua `USUARIO`, a raiz real do aplicativo e o executável Node da conta. Depois, confirme que o backup apareceu e mantenha uma cópia fora da conta cPanel.
 
 ## Verificação depois da publicação
 
