@@ -3,6 +3,7 @@ import {
   getAgendaVisitor,
   type AgendaVisitor,
 } from "../../../lib/agenda-visitor";
+import { getAuthenticatedUser } from "../../../lib/auth";
 import { workspaceSetupStatements } from "../../../lib/workspace-setup";
 import {
   addDays,
@@ -41,7 +42,7 @@ const json = responseJSON;
 const clean = (value: unknown, length = 500) =>
   typeof value === "string" ? value.trim().slice(0, length) : "";
 const fields =
-  "id,title,date,start,end,room_id AS roomId,kind,description,participants,link,owner_id AS ownerId,owner_name AS ownerName,organizer_email AS organizerEmail,created_at AS createdAt,updated_at AS updatedAt,cancelled_at AS cancelledAt,status,version";
+  "id,title,date,start,end,room_id AS roomId,kind,description,participants,link,owner_id AS ownerId,owner_name AS ownerName,organizer_email AS organizerEmail,created_by_name AS createdByName,created_by_email AS createdByEmail,created_at AS createdAt,updated_at AS updatedAt,cancelled_at AS cancelledAt,status,version";
 async function initialize() {
   await env.DB!.batch(
     workspaceSetupStatements.map((statement) => env.DB!.prepare(statement)),
@@ -58,10 +59,24 @@ export async function GET(request: Request) {
   try {
     if (!env.DB) throw new Error("Database unavailable");
     await initialize();
-    const visitor = await getAgendaVisitor(request, true),
-      user = visitor.user!;
-    const json = (data: unknown, status = 200) =>
-      responseJSON(data, status, visitor.cookie);
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return responseJSON({
+        authenticated: false,
+        user: null,
+        rooms: [],
+        bookings: [],
+        started: true,
+      });
+    }
+    const user: AgendaVisitor = {
+      userId: authUser.id,
+      displayName: authUser.name,
+      email: authUser.email,
+      isAdmin: true,
+      tokenHash: authUser.id,
+    };
+    const json = (data: unknown, status = 200) => responseJSON(data, status);
     const db = env.DB,
       params = new URL(request.url).searchParams;
     const rooms = await db.prepare("SELECT * FROM rooms ORDER BY rowid").all();
@@ -247,15 +262,22 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { user } = await getAgendaVisitor(request);
-    if (!user)
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser)
       return json(
         {
           error:
-            "Atualize a página para continuar. Permita os cookies deste site para salvar seus compromissos.",
+            "Sua sessão expirou ou você não está conectado. Faça login para continuar.",
         },
-        428,
+        401,
       );
+    const user: AgendaVisitor = {
+      userId: authUser.id,
+      displayName: authUser.name,
+      email: authUser.email,
+      isAdmin: true,
+      tokenHash: authUser.id,
+    };
     if (!allowedOrigin(request))
       return json({ error: "Origem inválida." }, 403);
     if (Number(request.headers.get("content-length") || 0) > 20000)
@@ -367,10 +389,10 @@ export async function POST(request: Request) {
             .bind(id)
             .first<Booking>()
         : null;
-    if (body.id && (!existing || existing.ownerId !== user.userId))
+    if (body.id && !existing)
       return json(
-        { error: "Você só pode alterar seus próprios compromissos." },
-        403,
+        { error: "Compromisso não encontrado." },
+        404,
       );
     if (existing?.status === "cancelled")
       return json(
@@ -397,14 +419,13 @@ export async function POST(request: Request) {
       const timestamp = Date.now(),
         result = await db
           .prepare(
-            "UPDATE bookings SET status='cancelled',cancelled_at=?,updated_at=?,last_actor_id=?,version=version+1 WHERE id=? AND owner_id=? AND version=? AND status='active'",
+            "UPDATE bookings SET status='cancelled',cancelled_at=?,updated_at=?,last_actor_id=?,version=version+1 WHERE id=? AND version=? AND status='active'",
           )
           .bind(
             timestamp,
             timestamp,
             user.userId,
             id,
-            user.userId,
             existing.version,
           )
           .run();
@@ -524,14 +545,13 @@ export async function POST(request: Request) {
     if (existing) {
       const result = await db
         .prepare(
-          "UPDATE bookings SET title=?,date=?,start=?,end=?,room_id=?,kind=?,description=?,participants=?,link=?,updated_at=?,last_actor_id=?,search_text=?,version=version+1,owner_name=?,organizer_email=? WHERE id=? AND owner_id=? AND version=? AND status='active'",
+          "UPDATE bookings SET title=?,date=?,start=?,end=?,room_id=?,kind=?,description=?,participants=?,link=?,updated_at=?,last_actor_id=?,search_text=?,version=version+1,owner_name=?,organizer_email=? WHERE id=? AND version=? AND status='active'",
         )
         .bind(
           ...values,
           organizerName,
           organizerEmail,
           id,
-          user.userId,
           existing.version,
         )
         .run();
@@ -543,10 +563,10 @@ export async function POST(request: Request) {
           },
           409,
         );
-    } else
+    } else {
       await db
         .prepare(
-          "INSERT INTO bookings(title,date,start,end,room_id,kind,description,participants,link,updated_at,last_actor_id,search_text,id,owner_id,owner_name,created_at,organizer_email) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO bookings(title,date,start,end,room_id,kind,description,participants,link,updated_at,last_actor_id,search_text,id,owner_id,owner_name,created_at,organizer_email,created_by_name,created_by_email) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .bind(
           ...values,
@@ -555,16 +575,11 @@ export async function POST(request: Request) {
           organizerName,
           timestamp,
           organizerEmail,
+          user.displayName,
+          user.email,
         )
         .run();
-    // Preserve a trusted administrator's identity email. A contact entered in
-    // a meeting cannot create, transfer or retain an administrative grant.
-    await db
-      .prepare(
-        "UPDATE agenda_visitors SET display_name=?,email=CASE WHEN is_admin=1 THEN email ELSE ? END WHERE token_hash=?",
-      )
-      .bind(organizerName, organizerEmail, user.tokenHash)
-      .run();
+    }
     const booking = await db
       .prepare(`SELECT ${fields} FROM bookings WHERE id=?`)
       .bind(id)

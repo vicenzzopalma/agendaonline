@@ -25,6 +25,8 @@ export const bookings = sqliteTable(
     ownerId: text("owner_id").notNull(),
     ownerName: text("owner_name").notNull(),
     organizerEmail: text("organizer_email").notNull().default(""),
+    createdByName: text("created_by_name").notNull().default(""),
+    createdByEmail: text("created_by_email").notNull().default(""),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull().default(0),
     cancelledAt: integer("cancelled_at"),
@@ -94,3 +96,28 @@ export const calendarPolicyHistory = sqliteTable("calendar_policy_history", {
   recordedAt: integer("recorded_at").notNull(),
   snapshot: text("snapshot").notNull(),
 });
+
+export const users = sqliteTable(
+  "users",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    email: text("email").notNull().unique(),
+    passwordHash: text("password_hash").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [index("users_email_idx").on(table.email)],
+);
+
+export const sessions = sqliteTable(
+  "sessions",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    createdAt: integer("created_at").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+  },
+  (table) => [index("sessions_user_idx").on(table.userId)],
+);
+

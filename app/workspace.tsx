@@ -38,6 +38,7 @@ import {
   CheckCircle2,
   Info,
   RefreshCw,
+  LogOut,
 } from "lucide-react";
 import {
   addDays,
@@ -59,6 +60,7 @@ import {
 import { MeetingLinkField, MeetingLinkDetail } from "./meeting-link";
 import { MiniCalendar, MonthView, nextMonth } from "./calendar-views";
 import { Modal } from "./modal";
+import { AuthView } from "./auth-view";
 import { useHolidays } from "../hooks/use-holidays";
 import { blockedHoliday, holidayMessage, type Holiday } from "../lib/holidays";
 import { HolidayNotice, HolidayToolbar } from "./holiday-indicator";
@@ -81,7 +83,8 @@ type Data = {
   todayBookings?: Booking[];
   upcoming?: Booking[];
   stats?: { week: number; mine: number };
-  user: User;
+  user: User | null;
+  authenticated?: boolean;
 };
 type Draft = {
   id?: string;
@@ -176,6 +179,7 @@ export default function Workspace() {
   const [showCancelled, setShowCancelled] = useState(false);
   const [policyOpen, setPolicyOpen] = useState(false);
   const [historyRevision, setHistoryRevision] = useState(0);
+  const [showAudit, setShowAudit] = useState(false);
   const holidayData = useHolidays([
     Number(anchor.slice(0, 4)),
     Number(miniMonth.slice(0, 4)),
@@ -268,22 +272,22 @@ export default function Workspace() {
           .includes(search.toLocaleLowerCase("pt-BR"))) &&
       (!roomFilter.length || roomFilter.includes(e.roomId || "online")) &&
       (!kindFilter || e.kind === kindFilter) &&
-      (tab !== "mine" || e.ownerId === data?.user.id),
+      (tab !== "mine" || e.ownerId === data?.user?.id),
   );
-  const weekStart = monday(anchor);
-  const days = Array.from({ length: 5 }, (_, i) => addDays(weekStart, i));
+  const weekStart = view === "week" ? anchor : monday(anchor);
+  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const rangeStart = view === "month" ? anchor.slice(0, 7) + "-01" : weekStart;
   const rangeEnd =
     view === "month"
       ? addDays(nextMonth(anchor, 1), -1)
-      : addDays(weekStart, 4);
+      : addDays(weekStart, 6);
   const rangeEvents = filtered
     .filter((e) => e.date >= rangeStart && e.date <= rangeEnd)
     .sort(
       (a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start),
     );
   const weekEvents = activeEvents.filter(
-    (e) => e.date >= monday(today) && e.date <= addDays(monday(today), 4),
+    (e) => e.date >= weekStart && e.date <= addDays(weekStart, 6),
   );
   const todayEvents = (data?.todayBookings || activeEvents)
     .filter((e) => e.date === today)
@@ -353,8 +357,8 @@ export default function Workspace() {
       participants: "",
       link: "",
       organizerName:
-        data?.user.name === "Visitante" ? "" : data?.user.name || "",
-      organizerEmail: data?.user.email || "",
+        data?.user?.name === "Visitante" ? "" : data?.user?.name || "",
+      organizerEmail: data?.user?.email || "",
     });
   }
   async function mutate(payload: Record<string, unknown>, message: string) {
@@ -393,7 +397,7 @@ export default function Workspace() {
     setLegacyRecipients(
       splitRecipients(event.participants).filter((part) => !validEmail(part)),
     );
-    setSelected(null);
+    setSelected(null); setShowAudit(false);
     setFormError("");
     setDraft({
       id: event.demo ? undefined : event.id,
@@ -407,8 +411,8 @@ export default function Workspace() {
       description: event.demo ? "" : event.description,
       participants: event.demo ? "" : event.participants,
       link: event.link,
-      organizerName: event.demo ? data?.user.name || "" : event.ownerName,
-      organizerEmail: event.organizerEmail || data?.user.email || "",
+      organizerName: event.demo ? data?.user?.name || "" : event.ownerName,
+      organizerEmail: event.organizerEmail || data?.user?.email || "",
     });
   }
   async function copyMeetingLink(url: string) {
@@ -715,34 +719,36 @@ export default function Workspace() {
             </button>
             <div
               className="avatar user-avatar"
-              title={data?.user.name || "Seu navegador"}
+              title={data?.user?.name || "Seu navegador"}
             >
-              {data ? initials(data.user.name) : "R"}
+              {data?.user ? initials(data.user.name) : "R"}
             </div>
           </div>
         </header>
         <main id="main-content">
           <div className="page-heading">
-            <div>
+            <div className="page-heading-group">
               <div className="eyebrow">
                 <span /> SUA ROTINA, ORGANIZADA
               </div>
-              <h1>
-                {tab === "rooms"
-                  ? "Salas de reunião"
-                  : tab === "mine"
-                    ? "Meus compromissos"
-                    : tab === "history"
-                      ? "Histórico da Realess"
-                      : "Agenda Realess"}
-              </h1>
-              <p>
-                {tab === "rooms"
-                  ? "Gerencie os espaços da Realess e reserve uma sala quando precisar."
-                  : tab === "mine"
-                    ? "Seus compromissos e reuniões, organizados em um só lugar."
-                    : "Organize o dia, acompanhe compromissos e planeje a semana."}
-              </p>
+              <div className="page-heading-content">
+                <h1>
+                  {tab === "rooms"
+                    ? "Salas de reunião"
+                    : tab === "mine"
+                      ? "Meus compromissos"
+                      : tab === "history"
+                        ? "Histórico da Realess"
+                        : "Agenda Realess"}
+                </h1>
+                <p>
+                  {tab === "rooms"
+                    ? "Gerencie os espaços da Realess e reserve uma sala quando precisar."
+                    : tab === "mine"
+                      ? "Seus compromissos e reuniões, organizados em um só lugar."
+                      : "Organize o dia, acompanhe compromissos e planeje a semana."}
+                </p>
+              </div>
             </div>
             {(tab === "rooms" || tab === "history") && (
               <button
@@ -791,7 +797,7 @@ export default function Workspace() {
                 label="Meus compromissos"
                 value={
                   data?.stats?.mine ??
-                  weekEvents.filter((e) => e.ownerId === data?.user.id).length
+                  weekEvents.filter((e) => e.ownerId === data?.user?.id).length
                 }
                 note="Criados neste navegador"
                 color="purple"
@@ -990,7 +996,7 @@ export default function Workspace() {
                       <div className="calendar-title">
                         <h2>
                           {view === "week"
-                            ? `${fmt(weekStart, { day: "numeric" })} – ${fmt(addDays(weekStart, 4), { day: "numeric", month: "long", year: "numeric" })}`
+                            ? `${fmt(weekStart, { day: "numeric", month: "short" })} – ${fmt(addDays(weekStart, 6), { day: "numeric", month: "short", year: "numeric" })}`
                             : fmt(anchor, {
                                 month: "long",
                                 year: "numeric",
@@ -1182,7 +1188,7 @@ export default function Workspace() {
                     <HolidayToolbar
                       record={holidayData.records[Number(anchor.slice(0, 4))]}
                       error={holidayData.error}
-                      isAdmin={!!data?.user.isAdmin}
+                      isAdmin={!!data?.user?.isAdmin}
                       onConfigure={() => setPolicyOpen(true)}
                     />
                     {view === "week" && activeRooms.length > 0 && (
@@ -1523,7 +1529,7 @@ export default function Workspace() {
               onCopy={copyMeetingLink}
               onAddLink={
                 selected.status !== "cancelled" &&
-                (selected.demo || selected.ownerId === data?.user.id)
+                (selected.demo || selected.ownerId === data?.user?.id)
                   ? () => editBooking(selected)
                   : undefined
               }
@@ -1575,6 +1581,50 @@ export default function Workspace() {
                 </span>
               </div>
             </div>
+            {/* Informativo discreto de quem agendou esta reunião */}
+            <div className="creator-audit-box">
+              <button
+                type="button"
+                className="creator-audit-toggle"
+                onClick={() => setShowAudit((prev) => !prev)}
+                title="Ver quem realizou este agendamento no sistema"
+              >
+                <Info size={14} />
+                <span>{showAudit ? "Ocultar dados de quem agendou" : "Quem agendou esta reunião?"}</span>
+              </button>
+              {showAudit && (
+                <div className="creator-audit-card">
+                  <div className="creator-audit-row">
+                    <Users size={16} />
+                    <div>
+                      <span className="creator-audit-caption">Agendado no sistema por</span>
+                      <strong className="creator-audit-name">
+                        {selected.createdByName || selected.ownerName}
+                      </strong>
+                      {selected.createdByEmail && (
+                        <span className="creator-audit-email"> ({selected.createdByEmail})</span>
+                      )}
+                    </div>
+                  </div>
+                  {selected.createdAt !== undefined && (
+                    <div className="creator-audit-row">
+                      <Clock3 size={16} />
+                      <div>
+                        <span className="creator-audit-caption">Data e hora do registro</span>
+                        <span>
+                          {new Intl.DateTimeFormat("pt-BR", {
+                            timeZone: TZ,
+                            dateStyle: "long",
+                            timeStyle: "short",
+                          }).format(new Date(selected.createdAt))}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="record-timestamps">
               {selected.createdAt !== undefined && (
                 <span>
@@ -1597,7 +1647,7 @@ export default function Workspace() {
                 </span>
               )}
             </div>
-            {selected.ownerId === data?.user.id && (
+            {selected.ownerId === data?.user?.id && (
               <BookingAudit key={selected.id} bookingId={selected.id} />
             )}
             {selected.description && (
@@ -1605,7 +1655,7 @@ export default function Workspace() {
             )}
           </div>
           <div className="modal-actions detail-actions">
-            {selected.ownerId === data?.user.id && selected.participants && (
+            {selected.ownerId === data?.user?.id && selected.participants && (
               <button
                 type="button"
                 className="button button-secondary"
@@ -1631,7 +1681,7 @@ export default function Workspace() {
               Exportar
             </button>
             {selected.status !== "cancelled" &&
-              (selected.demo || selected.ownerId === data?.user.id) && (
+              (selected.demo || selected.ownerId === data?.user?.id) && (
                 <>
                   <button
                     className="button button-primary"
@@ -1780,15 +1830,6 @@ export default function Workspace() {
                 </select>
               </label>
             </div>
-            <MeetingLinkField
-              value={draft.link}
-              onChange={(link) => setDraft({ ...draft, link })}
-            />
-            {draftHoliday && (
-              <p className="form-error" role="alert">
-                {holidayMessage(draftHoliday)}
-              </p>
-            )}
             {draftConflict ? (
               <div className="conflict-note" role="alert">
                 <Info size={17} />
@@ -1806,6 +1847,15 @@ export default function Workspace() {
                   Sala disponível no horário selecionado.
                 </div>
               )
+            )}
+            <MeetingLinkField
+              value={draft.link}
+              onChange={(link) => setDraft({ ...draft, link })}
+            />
+            {draftHoliday && (
+              <p className="form-error" role="alert">
+                {holidayMessage(draftHoliday)}
+              </p>
             )}
             <RecipientsField
               value={draft.participants}
@@ -2082,7 +2132,7 @@ export default function Workspace() {
           </div>
         </Modal>
       )}
-      {invitation && data && (
+      {invitation && data?.user && (
         <InvitationDialog
           event={invitation}
           rooms={rooms}
@@ -2228,6 +2278,10 @@ function WeekView({
   onEvent: (e: Booking) => void;
   onSlot: (day: string, start: string) => void;
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollByAmount = (amount: number) => {
+    scrollRef.current?.scrollBy({ left: amount, behavior: "smooth" });
+  };
   const visible = events.filter((e) => days.includes(e.date));
   const startHour = Math.min(
     8,
@@ -2238,48 +2292,85 @@ function WeekView({
     ...visible.map((e) => Math.ceil(minutes(e.end) / 60)),
   );
   const hourCount = endHour - startHour;
-  const hourHeight = 4; // rem: duas linhas por hora, com 30 minutos entre elas.
+  const hourHeight = 4.25; // rem
+  const calendarMinWidth = Math.max(1100, days.length * 190);
+
   return (
-    <>
-      <p className="week-scroll-hint">
-        Deslize a grade para ver os outros dias e horários. Você também pode
-        usar Mês ou Lista.
-      </p>
+    <div className="week-scroll-container">
+      <div className="week-scroll-nav">
+        <span className="week-scroll-nav-text">
+          Mostrando <strong>{days.length} dias</strong> a partir de {days[0] === today ? "Hoje" : fmt(days[0], { day: "numeric", month: "short" })}
+        </span>
+        <div className="week-scroll-nav-buttons">
+          <button
+            type="button"
+            className="scroll-nav-btn"
+            onClick={() => scrollByAmount(-280)}
+            title="Rolar para a esquerda"
+            aria-label="Rolar dias para a esquerda"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <button
+            type="button"
+            className="scroll-nav-btn"
+            onClick={() => scrollByAmount(280)}
+            title="Rolar para a direita"
+            aria-label="Rolar dias para a direita"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      </div>
       <div
         className="week-scroll"
         tabIndex={0}
+        ref={scrollRef}
         role="region"
         aria-label="Agenda semanal por horários"
       >
-        <div className="week-calendar" style={{ minWidth: 1080 }}>
-          <div className="week-head">
+        <div className="week-calendar" style={{ minWidth: `${calendarMinWidth}px` }}>
+          <div
+            className="week-head"
+            style={{
+              gridTemplateColumns: `4.5rem repeat(${days.length}, minmax(11rem, 1fr))`,
+            }}
+          >
             <div className="timezone-cell">GMT−3</div>
-            {days.map((day) => (
-              <div
-                title={holidays
-                  .filter((item) => item.date === day)
-                  .map(
-                    (item) =>
-                      `${item.name} · ${item.kind === "optional" ? "Ponto facultativo" : "Feriado"}`,
-                  )
-                  .join(" · ")}
-                className={`day-heading ${day === today ? "is-today" : ""} ${holidays.some((item) => item.date === day && item.kind !== "optional") ? "has-holiday" : holidays.some((item) => item.date === day) ? "has-optional" : ""}`}
-                key={day}
-              >
-                <span>{fmt(day, { weekday: "long" })}</span>
-                <strong>{fmt(day, { day: "2-digit" })}</strong>
-                {holidays.some((item) => item.date === day) && (
-                  <span
-                    className={`holiday-marker ${holidays.some((item) => item.date === day && item.kind !== "optional") ? "" : "optional-marker"}`}
-                    aria-label={holidays
-                      .filter((item) => item.date === day)
-                      .map((item) => item.name)
-                      .join(" · ")}
-                  />
-                )}
-                {day === today && <span className="today-indicator" />}
-              </div>
-            ))}
+            {days.map((day) => {
+              const isToday = day === today;
+              const isTomorrow = day === addDays(today, 1);
+              return (
+                <div
+                  title={holidays
+                    .filter((item) => item.date === day)
+                    .map(
+                      (item) =>
+                        `${item.name} · ${item.kind === "optional" ? "Ponto facultativo" : "Feriado"}`,
+                    )
+                    .join(" · ")}
+                  className={`day-heading ${isToday ? "is-today" : ""} ${holidays.some((item) => item.date === day && item.kind !== "optional") ? "has-holiday" : holidays.some((item) => item.date === day) ? "has-optional" : ""}`}
+                  key={day}
+                >
+                  <div className="day-heading-top">
+                    <span>{fmt(day, { weekday: "short" })}</span>
+                    {isToday && <span className="today-badge">HOJE</span>}
+                    {!isToday && isTomorrow && <span className="tomorrow-badge">AMANHÃ</span>}
+                  </div>
+                  <strong>{fmt(day, { day: "2-digit" })}</strong>
+                  {holidays.some((item) => item.date === day) && (
+                    <span
+                      className={`holiday-marker ${holidays.some((item) => item.date === day && item.kind !== "optional") ? "" : "optional-marker"}`}
+                      aria-label={holidays
+                        .filter((item) => item.date === day)
+                        .map((item) => item.name)
+                        .join(" · ")}
+                    />
+                  )}
+                  {isToday && <span className="today-indicator" />}
+                </div>
+              );
+            })}
             {days.includes(today) &&
               minutes(currentTime) >= startHour * 60 &&
               minutes(currentTime) < endHour * 60 && (
@@ -2322,51 +2413,71 @@ function WeekView({
                   </button>
                 ))}
                 {placeEvents(events.filter((e) => e.date === day)).map(
-                  ({ event, lane, lanes }) => (
-                    <button
-                      key={event.id}
-                      className={`calendar-event ${event.status === "cancelled" ? "is-cancelled" : event.date < today || (event.date === today && event.end <= currentTime) ? "event-past" : "event-future"} color-${eventColor(event)} ${minutes(event.end) - minutes(event.start) < 60 ? "short-event" : ""}`}
-                      style={{
-                        top: `${((minutes(event.start) - startHour * 60) / 60) * hourHeight + 0.0625}rem`,
-                        height: `${Math.max(1.875, ((minutes(event.end) - minutes(event.start)) / 60) * hourHeight - 0.25)}rem`,
-                        left: `calc(${(lane / lanes) * 100}% + 5px)`,
-                        width: `calc(${100 / lanes}% - 10px)`,
-                      }}
-                      title={`${event.title} · ${eventLocation(event)} · ${event.ownerName}`}
-                      onClick={() => onEvent(event)}
-                    >
-                      <strong>{event.title}</strong>
-                      <span
-                        className="event-meta"
-                        aria-label={`Local: ${eventLocation(event)}. Marcado por: ${event.ownerName}`}
+                  ({ event, lane, lanes }) => {
+                    const isNow = event.date === today && currentTime >= event.start && currentTime < event.end;
+                    const isPast = event.date < today || (event.date === today && event.end <= currentTime);
+                    const durationMins = minutes(event.end) - minutes(event.start);
+                    const isShort = durationMins < 60;
+                    return (
+                      <button
+                        key={event.id}
+                        className={`calendar-event ${isNow ? "is-now" : isPast ? "event-past" : "event-future"} ${event.status === "cancelled" ? "is-cancelled" : ""} color-${eventColor(event)} ${isShort ? "short-event" : ""}`}
+                        style={{
+                          top: `${((minutes(event.start) - startHour * 60) / 60) * hourHeight + 0.0625}rem`,
+                          height: `${Math.max(2.125, (durationMins / 60) * hourHeight - 0.25)}rem`,
+                          left: `calc(${(lane / lanes) * 100}% + 4px)`,
+                          width: `calc(${100 / lanes}% - 8px)`,
+                        }}
+                        title={`${event.title} (${event.start} - ${event.end}) · ${eventLocation(event)} · ${event.ownerName}`}
+                        onClick={() => onEvent(event)}
                       >
-                        <span className="event-meta-room" title={eventLocation(event)}>
-                          {event.roomId ? (
-                            <DoorOpen size={10} />
-                          ) : event.link || event.kind === "online" ? (
-                            <Video size={10} />
-                          ) : (
-                            <CalendarDays size={10} />
-                          )}
-                          <span>{eventLocation(event)}</span>
-                        </span>
-                        <span
-                          className="event-meta-person"
-                          title={`Marcado por ${event.ownerName}`}
-                        >
-                          <Users size={10} />
-                          <span>{event.ownerName}</span>
-                        </span>
-                      </span>
-                    </button>
-                  ),
+                        <div className="event-card-content">
+                          <div className="event-card-main">
+                            {isNow && (
+                              <span className="event-now-pill">
+                                <span className="pulse-dot" /> AGORA
+                              </span>
+                            )}
+                            <strong className="event-title-highlight">{event.title}</strong>
+                            <span
+                              className="event-meta"
+                              aria-label={`Local: ${eventLocation(event)}. Marcado por: ${event.ownerName}`}
+                            >
+                              <span className="event-meta-room" title={eventLocation(event)}>
+                                {event.roomId ? (
+                                  <DoorOpen size={11} />
+                                ) : event.link || event.kind === "online" ? (
+                                  <Video size={11} />
+                                ) : (
+                                  <CalendarDays size={11} />
+                                )}
+                                <span>{eventLocation(event)}</span>
+                              </span>
+                              {event.ownerName && event.ownerName.trim().toLowerCase() !== event.title.trim().toLowerCase() && (
+                                <span
+                                  className="event-meta-person"
+                                  title={`Marcado por ${event.ownerName}`}
+                                >
+                                  <Users size={11} />
+                                  <span>{event.ownerName}</span>
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                          <div className="event-time-vertical" aria-label={`${event.start} às ${event.end}`}>
+                            <span>{event.start} – {event.end}</span>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  },
                 )}
               </div>
             ))}
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 function EmptyState({

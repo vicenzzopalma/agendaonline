@@ -22,4 +22,5 @@ export const workspaceSetupStatements = [
    AND NOT EXISTS (SELECT 1 FROM bookings WHERE room_id=rooms.id)
    AND NOT EXISTS (SELECT 1 FROM settings WHERE id='realess-agenda-rooms-v2')`,
   `INSERT OR IGNORE INTO settings (id,started) VALUES ('realess-agenda-rooms-v2',1)`,
+  `UPDATE bookings SET created_by_name=owner_name, created_by_email=organizer_email WHERE (created_by_name IS NULL OR created_by_name='')`,
 ];

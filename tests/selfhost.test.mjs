@@ -12,7 +12,7 @@ test("SQLite: migrações, lote atômico, conflitos, histórico e backup", async
   const file = join(dir, "agenda.sqlite");
   let db = new LocalDatabase(file);
   const count = () => db.connection.prepare("SELECT COUNT(*) AS n FROM _agenda_migrations").get().n;
-  assert.equal(count(), 3);
+  assert.equal(count(), 4);
   await db.prepare("INSERT INTO rooms(id,name,capacity) VALUES('sala','Sala 1',0)").run();
   const insert = (id, start, end) => db.prepare("INSERT INTO bookings(id,title,date,start,end,room_id,owner_id,owner_name,created_at) VALUES(?,?,'2026-10-22',?,?,'sala','visitante','Pessoa',1)").bind(id, id, start, end);
   await insert("a", "09:00", "10:00").run();
@@ -26,7 +26,7 @@ test("SQLite: migrações, lote atômico, conflitos, histórico e backup", async
   await assert.rejects(db.prepare("DELETE FROM booking_history").run(), /HISTORY_PERMANENT/);
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM booking_history").first()).n, 4);
   db.close(); db = new LocalDatabase(file);
-  assert.equal(count(), 3);
+  assert.equal(count(), 4);
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM bookings").first()).n, 3);
   const backup = join(dir, "backup.sqlite");
   await backupDatabase(backup, db);
