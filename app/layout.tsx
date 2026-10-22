@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { publicOrigin } from "../lib/runtime";
+export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
-  metadataBase: new URL("https://realess-agenda.merrycrumb16384.chatgpt.site"),
+  metadataBase: new URL(publicOrigin()),
   title: "Agenda Realess",
   description:
     "Organize o dia, acompanhe compromissos e planeje a semana na agenda da Realess. Reserve uma sala de reunião quando precisar.",
   icons: { icon: "/favicon.svg" },
+  robots: { index: false, follow: false },
   openGraph: {
     title: "Agenda Realess",
     images: [

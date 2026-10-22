@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env, allowedOrigin } from "../../../lib/runtime";
 import {
   getAgendaVisitor,
   type AgendaVisitor,
@@ -256,8 +256,7 @@ export async function POST(request: Request) {
         },
         428,
       );
-    const origin = request.headers.get("origin");
-    if (origin && origin !== new URL(request.url).origin)
+    if (!allowedOrigin(request))
       return json({ error: "Origem inválida." }, 403);
     if (Number(request.headers.get("content-length") || 0) > 20000)
       return json({ error: "Dados muito extensos." }, 413);
@@ -296,7 +295,10 @@ export async function POST(request: Request) {
           .first()
       )
         return json({ error: "Já existe uma sala com esse nome." }, 409);
-      const color = ["green", "blue", "purple", "orange"].includes(
+      const color = [
+        "green", "blue", "purple", "orange", "teal", "rose", "indigo",
+        "red", "cyan", "lime", "slate", "brown",
+      ].includes(
         String(body.color),
       )
         ? body.color

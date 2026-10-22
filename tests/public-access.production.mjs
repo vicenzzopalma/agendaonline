@@ -15,7 +15,7 @@ const browser = await chromium.launch({
     "C:/Program Files/Google/Chrome/Application/chrome.exe",
 });
 try {
-  const context = await browser.newContext();
+  const context = await browser.newContext({ ignoreHTTPSErrors: ["localhost", "127.0.0.1"].includes(new URL(base).hostname) });
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -26,6 +26,7 @@ try {
   assert.equal(response.status(), 200);
   assert.equal(new URL(page.url()).origin, new URL(base).origin);
   await page.locator(".calendar-card").waitFor({ timeout: 30000 });
+  assert.equal(new URL(await page.locator('meta[property="og:image"]').getAttribute("content")).origin, new URL(base).origin);
   assert.equal(await page.locator("a[href*='signin-with-chatgpt']").count(), 0);
   const api = await context.request.get(new URL("/api/workspace", base).href);
   assert.equal(api.status(), 200);

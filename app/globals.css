@@ -114,6 +114,14 @@ a svg {
   --tone-soft: #f0e1ca;
   --tone-ink: #704918;
 }
+.color-teal { --tone: #167d78; --tone-light: #e5f4f1; --tone-soft: #cce9e4; --tone-ink: #155d59; }
+.color-rose { --tone: #c04d72; --tone-light: #fbedf1; --tone-soft: #f5d8e1; --tone-ink: #85344f; }
+.color-indigo { --tone: #5b63bd; --tone-light: #eff0ff; --tone-soft: #dcdefa; --tone-ink: #3e458f; }
+.color-red { --tone: #c7473c; --tone-light: #fff0ed; --tone-soft: #f8d9d4; --tone-ink: #87332b; }
+.color-cyan { --tone: #1686a0; --tone-light: #e7f6fa; --tone-soft: #ccecf3; --tone-ink: #145d70; }
+.color-lime { --tone: #638a38; --tone-light: #f1f7e9; --tone-soft: #e0edcf; --tone-ink: #456329; }
+.color-slate { --tone: #65758b; --tone-light: #eff2f6; --tone-soft: #e1e6ee; --tone-ink: #42526b; }
+.color-brown { --tone: #906344; --tone-light: #f6eee8; --tone-soft: #ebdbcd; --tone-ink: #68452f; }
 .color-gray {
   --tone: #65758b;
   --tone-light: #eff2f6;
@@ -924,7 +932,6 @@ a svg {
 .week-scroll {
   overflow: auto;
   max-width: 100%;
-  max-height: min(70dvh, 48.75rem);
   scrollbar-width: auto;
   scrollbar-color: #9aa9bc #edf1f6;
 }
@@ -955,8 +962,9 @@ a svg {
 }
 .day-heading {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  align-items: flex-start;
+  padding-left: 0.5rem;
   flex-direction: column;
   position: relative;
   background: #fff;
@@ -966,22 +974,22 @@ a svg {
 .day-heading > span:first-child {
   font-size: 0.75rem;
   font-weight: 600;
-  text-transform: uppercase;
+  text-transform: capitalize;
   color: #526176;
   letter-spacing: 0.01875rem;
 }
 .day-heading > strong {
-  font: 650 1.625rem/1.4 var(--font-display);
+  font: 600 1rem/1.4 var(--font-display);
   color: #26384f;
 }
 .day-heading.is-today {
-  background: #f5f0e6;
+  background: #0878d1;
 }
 .day-heading.is-today > span:first-child {
-  color: #634b23;
+  color: #fff;
 }
 .day-heading.is-today > strong {
-  color: #513c1d;
+  color: #fff;
 }
 .today-indicator {
   position: absolute;
@@ -989,7 +997,7 @@ a svg {
   height: 0.25rem;
   width: 2.25rem;
   border-radius: 0.125rem 0.125rem 0 0;
-  background: #8d6d37;
+  display: none;
 }
 .week-body {
   display: flex;
@@ -1031,13 +1039,13 @@ a svg {
   border-right: 0;
 }
 .day-column.is-today {
-  background: #fcfaf5;
+  background: #f6fbff;
 }
 .time-slot {
   position: absolute;
   left: 0;
   width: 100%;
-  height: 3rem;
+  height: 1.5rem;
   border-bottom: 1px dashed #e1e6ee;
   display: flex;
   align-items: center;
@@ -1134,21 +1142,50 @@ a svg {
 }
 .current-time-line {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 4rem;
   height: 0.125rem;
   z-index: 10;
-  background: #9e6531;
+  background: #111;
   pointer-events: none;
 }
 .current-time-line > span {
   position: absolute;
-  left: -0.1875rem;
+  right: -0.1875rem;
   top: -0.125rem;
   width: 0.375rem;
   height: 0.375rem;
   border-radius: 50%;
-  background: #9e6531;
+  background: #111;
+}
+
+.room-color-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  padding: 0.625rem 1rem;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.room-color-legend > strong { color: var(--ink); }
+.room-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.375rem;
+  border-radius: 0.25rem;
+}
+.room-legend-item:hover,
+.room-legend-item.is-filtered { background: var(--soft); color: var(--ink); }
+.room-legend-dot {
+  width: 0.75rem;
+  height: 0.75rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--tone);
 }
 .calendar-footer {
   display: flex;

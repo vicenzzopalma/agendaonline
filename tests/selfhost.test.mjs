@@ -1,0 +1,81 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, mkdirSync } from "node:fs";
+import { resolve, join } from "node:path";
+import { LocalDatabase, backupDatabase } from "../db/local-sqlite.mjs";
+import { importSitesSnapshot } from "../scripts/selfhost/import-sites.mjs";
+import { spawnSync } from "node:child_process";
+mkdirSync("outputs/selfhost", { recursive: true });
+const dir = mkdtempSync(resolve("outputs/selfhost/unit-"));
+
+test("SQLite: migrações, lote atômico, conflitos, histórico e backup", async () => {
+  const file = join(dir, "agenda.sqlite");
+  let db = new LocalDatabase(file);
+  const count = () => db.connection.prepare("SELECT COUNT(*) AS n FROM _agenda_migrations").get().n;
+  assert.equal(count(), 3);
+  await db.prepare("INSERT INTO rooms(id,name,capacity) VALUES('sala','Sala 1',0)").run();
+  const insert = (id, start, end) => db.prepare("INSERT INTO bookings(id,title,date,start,end,room_id,owner_id,owner_name,created_at) VALUES(?,?,'2026-10-22',?,?,'sala','visitante','Pessoa',1)").bind(id, id, start, end);
+  await insert("a", "09:00", "10:00").run();
+  await assert.rejects(insert("b", "09:30", "10:30").run(), /ROOM_CONFLICT/);
+  await insert("c", "10:00", "11:00").run();
+  await assert.rejects(db.batch([db.prepare("INSERT INTO settings VALUES('rollback',1)"), insert("d", "09:30", "10:00")]), /ROOM_CONFLICT/);
+  assert.equal(await db.prepare("SELECT * FROM settings WHERE id='rollback'").first(), null);
+  await db.prepare("UPDATE bookings SET status='cancelled',version=version+1,updated_at=2 WHERE id='a'").run();
+  await insert("e", "09:00", "10:00").run();
+  await assert.rejects(db.prepare("DELETE FROM bookings WHERE id='a'").run(), /HISTORY_PERMANENT/);
+  await assert.rejects(db.prepare("DELETE FROM booking_history").run(), /HISTORY_PERMANENT/);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM booking_history").first()).n, 4);
+  db.close(); db = new LocalDatabase(file);
+  assert.equal(count(), 3);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM bookings").first()).n, 3);
+  const backup = join(dir, "backup.sqlite");
+  await backupDatabase(backup, db);
+  await assert.rejects(backupDatabase(backup, db), /já existe/);
+  const restored = new LocalDatabase(backup);
+  assert.deepEqual(await restored.prepare("SELECT * FROM booking_history ORDER BY id").all(), await db.prepare("SELECT * FROM booking_history ORDER BY id").all());
+  restored.close(); db.close();
+});
+
+test("importação conserva IDs, participantes e auditorias de salas arquivadas", () => {
+  const original = new LocalDatabase(join(dir, "schema.sqlite"));
+  const tables = ["rooms", "settings", "bookings", "booking_history", "calendar_policy", "calendar_policy_history", "holiday_overrides", "agenda_visitors"];
+  const snapshot = { format: "agenda-realess-sites-v1", complete: true, tables: {} };
+  original.connection.prepare("INSERT INTO rooms(id,name,capacity,active) VALUES('antiga','Sala antiga',0,1)").run();
+  original.connection.prepare("INSERT INTO bookings(id,title,date,start,end,room_id,owner_id,owner_name,created_at,participants,organizer_email) VALUES('antigo','Reunião','2020-01-01','09:00','10:00','antiga','organizador-antigo','Pessoa',1,'pessoa@example.test','organizador@example.test')").run();
+  original.connection.prepare("UPDATE rooms SET active=0 WHERE id='antiga'").run();
+  for (const table of tables) snapshot.tables[table] = { columns: original.connection.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name), rows: original.connection.prepare(`SELECT * FROM ${table}`).all() };
+  const target = join(dir, "importado.sqlite");
+  const result = importSitesSnapshot(snapshot, target);
+  assert.equal(result.bookings, 1); assert.equal(result.history, 1);
+  const imported = new LocalDatabase(target);
+  for (const table of tables) assert.deepEqual(imported.connection.prepare(`SELECT * FROM ${table}`).all(), snapshot.tables[table].rows);
+  assert.equal(imported.connection.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='trigger' AND tbl_name='bookings'").get().n, 5);
+  assert.throws(() => importSitesSnapshot(snapshot, target), /já existe/);
+  imported.close(); original.close();
+});
+
+test("restauração offline e administração por navegador preservam os registros", () => {
+  const target = join(dir, "restaurado-cli.sqlite");
+  const empty = new LocalDatabase(target); empty.close();
+  const environment = { ...process.env, PUBLIC_URL: "http://127.0.0.1:3198", PORT: "3198", AGENDA_DB_PATH: target, AGENDA_BACKUP_DIR: join(dir, "backups-cli"), AGENDA_LOG_DIR: join(dir, "logs-cli") };
+  const run = (file, ...args) => {
+    const result = spawnSync(process.execPath, [resolve(file), ...args], { env: environment, encoding: "utf8", windowsHide: true });
+    assert.equal(result.status, 0, result.stderr + result.stdout);
+    return result.stdout;
+  };
+  run("scripts/selfhost/restore.mjs", join(dir, "backup.sqlite"));
+  let db = new LocalDatabase(target);
+  assert.equal(db.connection.prepare("SELECT COUNT(*) AS n FROM bookings").get().n, 3);
+  assert.equal(db.connection.prepare("SELECT COUNT(*) AS n FROM booking_history").get().n, 4);
+  db.connection.prepare("INSERT INTO agenda_visitors VALUES(?, 'visitor_teste', 'Pessoa', '', 0, ?, ?)").run("a".repeat(64), Date.now(), Date.now() + 60000);
+  db.close();
+  run("scripts/selfhost/admin.mjs", "grant", "visitor_teste");
+  db = new LocalDatabase(target); assert.equal(db.connection.prepare("SELECT is_admin FROM agenda_visitors").get().is_admin, 1); db.close();
+  run("scripts/selfhost/admin.mjs", "revoke", "visitor_teste");
+  run("scripts/selfhost/admin.mjs", "adopt", "visitor_teste", "visitante");
+  db = new LocalDatabase(target);
+  assert.equal(db.connection.prepare("SELECT visitor_id FROM agenda_visitors").get().visitor_id, "visitante");
+  assert.equal(db.connection.prepare("SELECT is_admin FROM agenda_visitors").get().is_admin, 0);
+  assert.equal(db.connection.prepare("SELECT COUNT(*) AS n FROM booking_history").get().n, 4);
+  db.close();
+});

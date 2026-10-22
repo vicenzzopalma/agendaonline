@@ -111,6 +111,14 @@ const colorNames: Record<string, string> = {
   blue: "Dourado Realess",
   purple: "Azul acinzentado",
   orange: "Areia",
+  teal: "Verde-petróleo",
+  rose: "Rosa",
+  indigo: "Índigo",
+  red: "Vermelho",
+  cyan: "Turquesa",
+  lime: "Verde-lima",
+  slate: "Cinza-azulado",
+  brown: "Marrom",
 };
 const kinds: Record<string, string> = {
   appointment: "Compromisso",
@@ -154,7 +162,7 @@ export default function Workspace() {
   const [roomFilter, setRoomFilter] = useState<string[]>([]);
   const [kindFilter, setKindFilter] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [weekends, setWeekends] = useState(false);
+  const [weekends, setWeekends] = useState(true);
   const [sidebar, setSidebar] = useState(false);
   const [selected, setSelected] = useState<Booking | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -981,10 +989,12 @@ export default function Workspace() {
                     <div className="calendar-toolbar">
                       <div className="calendar-title">
                         <h2>
-                          {fmt(anchor, {
-                            month: "long",
-                            year: "numeric",
-                          }).replace(" de ", " ")}
+                          {view === "week"
+                            ? `${fmt(weekStart, { day: "numeric" })} – ${fmt(addDays(weekStart, 6), { day: "numeric", month: "long", year: "numeric" })}`
+                            : fmt(anchor, {
+                                month: "long",
+                                year: "numeric",
+                              }).replace(" de ", " ")}
                         </h2>
                         <label className="period-picker">
                           <span className="sr-only">Selecionar mês e ano</span>
@@ -1183,6 +1193,24 @@ export default function Workspace() {
                       isAdmin={!!data?.user.isAdmin}
                       onConfigure={() => setPolicyOpen(true)}
                     />
+                    {view === "week" && activeRooms.length > 0 && (
+                      <div className="room-color-legend" aria-label="Cores das salas">
+                        <strong>Salas</strong>
+                        {activeRooms.map((room) => (
+                          <button
+                            type="button"
+                            key={room.id}
+                            className={`room-legend-item ${roomFilter.includes(room.id) ? "is-filtered" : ""}`}
+                            aria-pressed={roomFilter.includes(room.id)}
+                            onClick={() => toggleRoom(room.id)}
+                            title={`Filtrar pela sala ${room.name}`}
+                          >
+                            <span className={`room-legend-dot color-${colorNames[room.color] ? room.color : "green"}`} />
+                            {room.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     {view === "week" ? (
                       <WeekView
                         holidays={holidays}
@@ -2209,7 +2237,7 @@ function WeekView({
     ...visible.map((e) => Math.ceil(minutes(e.end) / 60)),
   );
   const hourCount = endHour - startHour;
-  const hourHeight = 6; // rem: slot positions scale with the visitor's font size.
+  const hourHeight = 3; // rem: duas linhas por hora, com 30 minutos entre elas.
   return (
     <>
       <p className="week-scroll-hint">
@@ -2240,7 +2268,7 @@ function WeekView({
                 className={`day-heading ${day === today ? "is-today" : ""} ${holidays.some((item) => item.date === day && item.kind !== "optional") ? "has-holiday" : holidays.some((item) => item.date === day) ? "has-optional" : ""}`}
                 key={day}
               >
-                <span>{fmt(day, { weekday: "short" }).replace(".", "")}</span>
+                <span>{fmt(day, { weekday: "long" })}</span>
                 <strong>{fmt(day, { day: "2-digit" })}</strong>
                 {holidays.some((item) => item.date === day) && (
                   <span
@@ -2321,20 +2349,21 @@ function WeekView({
                     </button>
                   ),
                 )}
-                {day === today &&
-                  minutes(currentTime) >= startHour * 60 &&
-                  minutes(currentTime) < endHour * 60 && (
-                    <div
-                      className="current-time-line"
-                      style={{
-                        top: `${((minutes(currentTime) - startHour * 60) / 60) * hourHeight}rem`,
-                      }}
-                    >
-                      <span />
-                    </div>
-                  )}
               </div>
             ))}
+            {days.includes(today) &&
+              minutes(currentTime) >= startHour * 60 &&
+              minutes(currentTime) < endHour * 60 && (
+                <div
+                  className="current-time-line"
+                  style={{
+                    top: `${((minutes(currentTime) - startHour * 60) / 60) * hourHeight}rem`,
+                    right: `${((days.length - days.indexOf(today) - 1) / days.length) * 100}%`,
+                  }}
+                >
+                  <span />
+                </div>
+              )}
           </div>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env, allowedOrigin } from "../../../lib/runtime";
 import { getAgendaVisitor } from "../../../lib/agenda-visitor";
 import {
   isCalendarAdmin,
@@ -13,8 +13,7 @@ export async function POST(request: Request) {
       { error: "Somente administradores podem alterar o calendário." },
       { status: 403 },
     );
-  const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin)
+  if (!allowedOrigin(request))
     return Response.json({ error: "Origem inválida." }, { status: 403 });
   try {
     if (Number(request.headers.get("content-length") || 0) > 60000)

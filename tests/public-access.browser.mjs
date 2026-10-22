@@ -4,7 +4,8 @@ import { resolve } from "node:path";
 const { chromium } = await import(
   process.env.PLAYWRIGHT_MODULE || "playwright"
 );
-const base = process.env.BASE_URL || "http://127.0.0.1:5173";
+const base = process.env.BASE_URL || "http://127.0.0.1:3000";
+const cookieName = new URL(base).protocol === "https:" ? "__Host-realess_device" : "realess_device";
 assert.ok(
   ["127.0.0.1", "localhost"].includes(new URL(base).hostname),
   "Local fixtures only",
@@ -20,8 +21,9 @@ for (const [name, executablePath] of [
   const owner = await browser.newContext({
     viewport: { width: name === "Chrome" ? 1440 : 390, height: 900 },
     acceptDownloads: true,
+    ignoreHTTPSErrors: true,
   });
-  const other = await browser.newContext();
+  const other = await browser.newContext({ ignoreHTTPSErrors: true });
   const page = await owner.newPage();
   const errors = [];
   let booking;
@@ -74,9 +76,10 @@ for (const [name, executablePath] of [
     assert.equal(first.body.user.isAdmin, false);
     assert.ok(first.body.user.id.startsWith("visitor_"));
     const cookie = (await owner.cookies()).find(
-      (item) => item.name === "realess_device",
+      (item) => item.name === cookieName,
     );
     assert.ok(cookie?.httpOnly);
+    assert.equal(cookie.secure, new URL(base).protocol === "https:");
     assert.equal(cookie.sameSite, "Lax");
     assert.ok(
       !(await page.evaluate(() => document.cookie)).includes("realess_device"),
@@ -184,6 +187,7 @@ for (const [name, executablePath] of [
     );
     const restored = await browser.newContext({
       storageState: await owner.storageState(),
+      ignoreHTTPSErrors: true,
     });
     try {
       assert.equal(
@@ -259,10 +263,10 @@ for (const [name, executablePath] of [
       await post(other, { action: "deleteBooking", id: claimed.body.id });
     }
     // An arbitrary cookie cannot impersonate an existing owner.
-    const forged = await browser.newContext();
+    const forged = await browser.newContext({ ignoreHTTPSErrors: true });
     try {
       await forged.addCookies([
-        { name: "realess_device", value: first.body.user.id, url: base },
+        { name: cookieName, value: first.body.user.id, url: base, secure: new URL(base).protocol === "https:" },
       ]);
       const foreign = (await get(forged, "/api/workspace")).body.user;
       assert.notEqual(foreign.id, first.body.user.id);
@@ -274,6 +278,17 @@ for (const [name, executablePath] of [
     } finally {
       await forged.close();
     }
+    // Public self-hosting must ignore identity headers sent by a visitor.
+    const spoofed = await browser.newContext({ ignoreHTTPSErrors: true, extraHTTPHeaders: {
+      "oai-authenticated-user-id": first.body.user.id,
+      "oai-authenticated-user-email": "admin-qa@example.test",
+    } });
+    try {
+      const visitor = (await get(spoofed, "/api/workspace")).body.user;
+      assert.notEqual(visitor.id, first.body.user.id);
+      assert.equal(visitor.isAdmin, false);
+      assert.equal(visitor.email, "");
+    } finally { await spoofed.close(); }
     assert.deepEqual(errors, []);
     reports.push({
       browser: name,

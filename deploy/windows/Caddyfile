@@ -1,0 +1,25 @@
+{
+	admin off
+	persist_config off
+	storage file_system {
+		root "{$CADDY_DATA_DIR}"
+	}
+}
+
+{$AGENDA_DOMAIN} {
+	encode zstd gzip
+	request_body {
+		max_size 128KB
+	}
+	header Strict-Transport-Security "max-age=31536000"
+	reverse_proxy 127.0.0.1:{$PORT} {
+		header_up Host {host}
+	}
+	log {
+		output file "{$CADDY_LOG_FILE}" {
+			roll_size 10MiB
+			roll_keep 5
+			roll_keep_for 168h
+		}
+	}
+}

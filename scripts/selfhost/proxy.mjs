@@ -1,0 +1,17 @@
+import { spawn } from "node:child_process";
+import { existsSync, mkdirSync } from "node:fs";
+import { resolve } from "node:path";
+import { loadConfig } from "./config.mjs";
+const config = loadConfig();
+if (config.url.protocol !== "https:" || config.url.port) throw new Error("O proxy público requer PUBLIC_URL=https://agenda.realess.com.br (HTTPS, sem porta).");
+process.env.AGENDA_DOMAIN = config.url.hostname;
+process.env.CADDY_DATA_DIR = resolve("data/caddy").replaceAll("\\", "/");
+process.env.CADDY_LOG_FILE = resolve(config.logDir, "acessos.json").replaceAll("\\", "/");
+mkdirSync(process.env.CADDY_DATA_DIR, { recursive: true });
+const executable = resolve("runtime/caddy.exe");
+if (!existsSync(executable)) throw new Error("Caddy não encontrado em runtime/caddy.exe. Use o pacote Windows completo.");
+const child = spawn(executable, ["run", "--config", resolve("deploy/windows/Caddyfile"), "--adapter", "caddyfile"], { stdio: "inherit", windowsHide: true, env: process.env });
+process.on("SIGINT", () => child.kill("SIGINT"));
+process.on("SIGTERM", () => child.kill("SIGTERM"));
+child.on("error", (error) => { console.error(error.message); process.exit(1); });
+child.on("exit", (code) => process.exit(code ?? 1));

@@ -1,6 +1,4 @@
-import { env } from "cloudflare:workers";
-import { getChatGPTUser } from "../app/chatgpt-auth";
-import { configuredCalendarAdmin } from "./holiday-service";
+import { env, publicOrigin } from "./runtime";
 import {
   createDeviceToken,
   deviceCookie,
@@ -25,7 +23,7 @@ export async function getAgendaVisitor(
   const db = env.DB!;
   const token = readDeviceToken(
     request.headers.get("cookie"),
-    deviceCookieName(request.url),
+    deviceCookieName(publicOrigin(request)),
   );
   if (token) {
     const hash = await hashDeviceToken(token);
@@ -37,27 +35,23 @@ export async function getAgendaVisitor(
       .first<Omit<AgendaVisitor, "tokenHash">>();
     if (record)
       return {
-        // Only an originally trusted identity can be an admin. Re-check the
-        // current allowlist so removing an administrator revokes their role.
         user: {
           ...record,
-          isAdmin: !!record.isAdmin && configuredCalendarAdmin(record.email),
+          // Granted/revoked only by the server's offline administration tool.
+          isAdmin: !!record.isAdmin,
           tokenHash: hash,
         },
       };
   }
   if (!create) return { user: null };
-  // Optional, passive continuity for existing organizers. This never redirects
-  // visitors or requires an OpenAI account. Anonymous access is the normal path.
-  const previousIdentity = await getChatGPTUser();
+  // Never trust identity headers supplied by visitors to a public Node server.
   const freshToken = createDeviceToken(),
     hash = await hashDeviceToken(freshToken);
   const user: AgendaVisitor = {
-    userId: previousIdentity?.userId || `visitor_${crypto.randomUUID()}`,
-    displayName: previousIdentity?.displayName || "Visitante",
-    email: previousIdentity?.email || "",
-    isAdmin:
-      !!previousIdentity && configuredCalendarAdmin(previousIdentity.email),
+    userId: `visitor_${crypto.randomUUID()}`,
+    displayName: "Visitante",
+    email: "",
+    isAdmin: false,
     tokenHash: hash,
   };
   const now = Date.now();
@@ -75,5 +69,5 @@ export async function getAgendaVisitor(
       now + DEVICE_LIFETIME * 1000,
     )
     .run();
-  return { user, cookie: deviceCookie(request.url, freshToken) };
+  return { user, cookie: deviceCookie(publicOrigin(request), freshToken) };
 }

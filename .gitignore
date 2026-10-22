@@ -28,6 +28,7 @@ yarn-error.log*
 
 # Local environment and keys
 .env*
+!.env.example
 .dev.vars*
 *.pem
 
@@ -40,6 +41,12 @@ yarn-error.log*
 /.codex/
 /outputs/
 /work/
+/data/
+/banco-de-dados/*
+!/banco-de-dados/README.txt
+/logs/
+/runtime/
+/releases/
 
 # OS metadata
 .DS_Store
