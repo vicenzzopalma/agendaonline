@@ -65,6 +65,8 @@ export async function GET(request: Request) {
       responseJSON(data, status, visitor.cookie);
     const db = env.DB,
       params = new URL(request.url).searchParams;
+    if ((params.has("audit") || params.get("mode") === "history") && !user.isAdmin)
+      return json({ error: "O histórico está disponível apenas para o acesso Master." }, 403);
     const rooms = await db.prepare("SELECT * FROM rooms ORDER BY rowid").all();
     const visible = (rows: unknown[]) =>
       (rows as Booking[]).map((row) => ({

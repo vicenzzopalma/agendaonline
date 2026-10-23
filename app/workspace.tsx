@@ -328,6 +328,8 @@ export default function Workspace() {
     roomById(event.roomId)?.color ||
     (event.kind === "focus" ? "purple" : "green");
   const eventLocation = (event: Booking) => bookingLocation(event, rooms);
+  const hasRoomInvitation = (event?: Booking | null) =>
+    !!event?.roomId && event.kind !== "online" && !event.link;
   const canManageBooking = (event: Booking) =>
     !!data?.user && (data.user.isAdmin === true || event.ownerId === data.user.id);
   const changeAnchor = (day: string) => {
@@ -337,9 +339,11 @@ export default function Workspace() {
     setMiniMonth(day.slice(0, 7) + "-01");
   };
   const switchTab = (value: typeof tab) => {
+    if (value === "history" && !data?.user?.isAdmin) return;
     setTab(value);
     setSidebar(false);
     setSearch("");
+    if (value === "calendar") setView("week");
     if (value === "mine") setView("list");
   };
   const toggleRoom = (id: string) =>
@@ -478,8 +482,9 @@ export default function Workspace() {
       setRemovedOnly(
         !result.booking?.participants && !!result.removedInvitation,
       );
-      if (result.booking?.participants) setInvitation(result.booking);
-      else if (result.removedInvitation)
+      if (result.booking?.participants && hasRoomInvitation(result.booking))
+        setInvitation(result.booking);
+      else if (result.removedInvitation && hasRoomInvitation(result.removedInvitation))
         setInvitation(result.removedInvitation);
     }
   };
@@ -604,13 +609,13 @@ export default function Workspace() {
             className={`nav-item ${tab === "users" ? "active" : ""}`}
             onClick={() => switchTab("users")}
           ><UserRoundCog size={19} /> Usuários e acessos</button>}
-          <button
+          {data?.user?.isAdmin && <button
             className={`nav-item ${tab === "history" ? "active" : ""}`}
             onClick={() => switchTab("history")}
           >
             <Search size={19} />
             Histórico
-          </button>
+          </button>}
         </nav>
         <MiniCalendar
           month={miniMonth}
@@ -622,6 +627,7 @@ export default function Workspace() {
           onSelect={(day) => {
             changeAnchor(day);
             setTab("calendar");
+            setView("week");
             setSearch("");
           }}
         />
@@ -1687,7 +1693,7 @@ export default function Workspace() {
                 </span>
               )}
             </div>
-            {canManageBooking(selected) && (
+            {data?.user?.isAdmin && (
               <BookingAudit key={selected.id} bookingId={selected.id} />
             )}
             {selected.description && (
@@ -1695,7 +1701,7 @@ export default function Workspace() {
             )}
           </div>
           <div className="modal-actions detail-actions">
-            {canManageBooking(selected) && selected.participants && (
+            {canManageBooking(selected) && selected.participants && hasRoomInvitation(selected) && (
               <button
                 type="button"
                 className="button button-secondary"
@@ -1841,9 +1847,7 @@ export default function Workspace() {
                 Sala de reunião <span className="optional">opcional</span>
                 <select
                   value={draft.roomId}
-                  onChange={(e) =>
-                    setDraft({ ...draft, roomId: e.target.value })
-                  }
+                  onChange={(e) => setDraft({ ...draft, roomId: e.target.value })}
                 >
                   <option value="">Sem sala de reunião</option>
                   {activeRooms.map((room) => (
@@ -1858,7 +1862,13 @@ export default function Workspace() {
                 Tipo de encontro
                 <select
                   value={draft.kind}
-                  onChange={(e) => setDraft({ ...draft, kind: e.target.value })}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      kind: e.target.value,
+                      roomId: e.target.value === "online" ? "" : draft.roomId,
+                    })
+                  }
                 >
                   {Object.entries(kinds).map(([key, label]) => (
                     <option value={key} key={key}>
@@ -1950,7 +1960,10 @@ export default function Workspace() {
                 )}
                 {saving
                   ? "Salvando…"
-                  : splitRecipients(draft.participants).some(validEmail)
+                  : splitRecipients(draft.participants).some(validEmail) &&
+                      !!draft.roomId &&
+                      draft.kind !== "online" &&
+                      !draft.link
                     ? draft.id
                       ? "Salvar alterações e preparar convite no Outlook"
                       : "Salvar compromisso e preparar convite no Outlook"
@@ -2150,7 +2163,7 @@ export default function Workspace() {
                 if (result) {
                   setConfirm(null);
                   setRoomFilter([]);
-                  if (result.booking?.participants)
+                  if (result.booking?.participants && hasRoomInvitation(result.booking))
                     setInvitation(result.booking);
                   setRemovedInvitation(null);
                   setRemovedOnly(false);

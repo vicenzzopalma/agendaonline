@@ -85,8 +85,9 @@ export function invitationMessage(
 ) {
   const cancelled = event.status === "cancelled";
   const updated = !cancelled && (event.version || 1) > 1;
-  const subject = `${cancelled ? (removedOnly ? "Cancelamento de participação" : "Cancelamento de reunião") : updated ? "Atualização de reunião" : "Convite de reunião"} — ${oneLine(event.title)}`;
-  const link = meetingLinkInfo(event.link || "")?.url || "";
+  const subject = cancelled
+    ? `${removedOnly ? "Cancelamento de participação" : "Cancelamento de reunião"} — ${oneLine(event.title)}`
+    : `${updated ? "Atualização de reunião presencial" : "Convite para reunião presencial"} — ${oneLine(event.title)}`;
   const body = [
     "Olá,",
     "",
@@ -95,14 +96,15 @@ export function invitationMessage(
         ? "Sua participação na reunião abaixo foi cancelada na Agenda Realess. A reunião continua agendada para os demais participantes."
         : "A reunião abaixo foi cancelada na Agenda Realess."
       : updated
-        ? "Os dados da reunião abaixo foram atualizados na Agenda Realess."
-        : "Você está sendo convidado(a) para participar de uma reunião agendada pela Agenda Realess.",
+        ? "Os dados da reunião presencial abaixo foram atualizados na Agenda Realess."
+        : "Você está convidado(a) para participar de uma reunião presencial agendada pela Agenda Realess.",
     "",
     `Reunião: ${oneLine(event.title)}`,
     `Data: ${event.date.split("-").reverse().join("/")}`,
     `Horário: ${event.start} às ${event.end} (horário de Brasília / São Paulo)`,
-    `Local: ${bookingLocation(event, rooms)}`,
-    ...(link ? ["", "Link da reunião:", link] : []),
+    "Formato: Presencial",
+    `Local: ${event.roomId ? bookingLocation(event, rooms) : "Sala não informada"}`,
+    `Organizada por: ${oneLine(event.ownerName || "Responsável não informado")}`,
     ...(event.description
       ? ["", "Descrição:", event.description.replace(/\r\n|\r/g, "\n")]
       : []),
