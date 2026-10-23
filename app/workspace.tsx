@@ -1112,6 +1112,14 @@ export default function Workspace() {
                             </button>
                           ))}
                         </div>
+                        <button
+                          className="button button-primary calendar-create-action"
+                          disabled={!data}
+                          onClick={() => newBooking()}
+                        >
+                          <Plus size={17} />
+                          Novo compromisso
+                        </button>
                       </div>
                     </div>
                     <div className="calendar-subtoolbar">
@@ -1498,14 +1506,6 @@ export default function Workspace() {
                         <small>Gerenciar espaços da Realess</small>
                       </div>
                       <ChevronRight size={16} />
-                    </button>
-                    <button
-                      className="button button-primary agenda-side-action"
-                      disabled={!data}
-                      onClick={() => newBooking()}
-                    >
-                      <Plus size={18} />
-                      Novo compromisso
                     </button>
                     <div className="quiet-note">
                       <span className="quiet-note-symbol">✳</span>

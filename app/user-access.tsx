@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { Check, Eye, EyeOff, LoaderCircle, Plus, RefreshCw, ShieldCheck, UserRound, Users } from "lucide-react";
+import { Check, Eye, EyeOff, KeyRound, LoaderCircle, Plus, RefreshCw, ShieldCheck, UserRound, Users } from "lucide-react";
 import type { ManagedUser } from "../lib/user-accounts.mjs";
 import { Modal } from "./modal";
 
@@ -15,6 +15,7 @@ export function UserAccessPanel() {
   const [saving, setSaving] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [target, setTarget] = useState<ManagedUser | null>(null);
+  const [passwordTarget, setPasswordTarget] = useState<ManagedUser | null>(null);
   const sequence = useRef(0);
   const refresh = useCallback(async () => {
     const current = ++sequence.current;
@@ -60,12 +61,13 @@ export function UserAccessPanel() {
     <div className="access-users-card">
       <div className="access-users-heading"><h3><Users size={19} /> Usuários cadastrados <span className="count-pill">{users.length}</span></h3><button className="button button-secondary" disabled={loading || saving} onClick={() => void refresh()}><RefreshCw size={15} /> Atualizar</button></div>
       {loading ? <p className="access-state" role="status"><LoaderCircle size={22} className="spin" /> Carregando acessos...</p> : loadError ? <div className="access-state"><p role="alert">{loadError}</p><button className="button button-secondary" onClick={() => void refresh()}>Tentar novamente</button></div> : <div className="access-table-wrap" tabIndex={0} role="region" aria-label="Lista de usuários cadastrados">
-        <table className="access-users-table"><thead><tr><th scope="col">Nome</th><th scope="col">Login</th><th scope="col">Perfil</th><th scope="col">Situação</th><th scope="col">Acesso</th></tr></thead><tbody>{users.map((user) => <tr key={user.id}>
+        <table className="access-users-table"><thead><tr><th scope="col">Nome</th><th scope="col">Login</th><th scope="col">Perfil</th><th scope="col">Situação</th><th scope="col">Acesso</th><th scope="col">Senha</th></tr></thead><tbody>{users.map((user) => <tr key={user.id}>
           <th scope="row"><div className="access-user-name"><span className={`access-user-avatar ${user.role === "master" ? "is-master" : ""}`}>{user.role === "master" ? <ShieldCheck size={18} /> : <UserRound size={18} />}</span><strong>{user.name}</strong></div></th>
           <td className="access-username">{user.username}</td>
           <td>{user.role === "master" ? "Master" : "Colaborador"}</td>
           <td><span className={`access-status ${user.active ? "is-active" : "is-inactive"}`}><i />{user.active ? "Ativo" : "Inativo"}</span></td>
           <td>{user.role === "master" ? <span className="access-protected">Seu acesso</span> : <button className={`button button-secondary ${user.active ? "danger-text" : ""}`} onClick={() => { setTarget(user); setFormError(""); setNotice(""); }} aria-label={`${user.active ? "Desativar" : "Ativar"} acesso de ${user.name}`}>{user.active ? "Desativar" : "Ativar"}</button>}</td>
+          <td><button className="button button-secondary" onClick={() => { setPasswordTarget(user); setFormError(""); setNotice(""); setShowPassword(false); }} aria-label={`Alterar senha de ${user.name}`}><KeyRound size={15} /> Alterar senha</button></td>
         </tr>)}</tbody></table>
       </div>}
       <p className="access-card-footnote">Cada colaborador entra com seu próprio login. Seu perfil Master mantém o controle dos acessos e de todas as reuniões.</p>
@@ -87,6 +89,23 @@ export function UserAccessPanel() {
       <div className="modal-actions"><button className="button button-secondary" disabled={saving} onClick={() => setTarget(null)}>Voltar</button><button className={`button ${target.active ? "button-danger" : "button-primary"}`} disabled={saving} onClick={async () => {
         if (await mutate({ action: "setActive", id: target.id, active: !target.active })) { setNotice(target.active ? "Acesso desativado. As sessões desse usuário foram encerradas." : "Acesso ativado."); setTarget(null); }
       }}>{saving && <LoaderCircle className="spin" size={16} />}{target.active ? "Desativar acesso" : "Ativar acesso"}</button></div>
+    </Modal>}
+    {passwordTarget && <Modal title="Alterar senha" subtitle={`Defina uma nova senha para ${passwordTarget.name}.`} onClose={() => { if (!saving) { setPasswordTarget(null); setShowPassword(false); } }}>
+      <form className="booking-form access-create-form" onSubmit={async (event) => {
+        event.preventDefault();
+        if (saving) return;
+        const values = new FormData(event.currentTarget);
+        if (await mutate({ action: "changePassword", id: passwordTarget.id, password: values.get("password") })) {
+          setPasswordTarget(null); setShowPassword(false);
+          setNotice(passwordTarget.role === "master" ? "Sua senha foi alterada. As outras sessões do Master foram encerradas." : `Senha de ${passwordTarget.name} alterada. As sessões abertas foram encerradas.`);
+        }
+      }} aria-busy={saving}>
+        <label htmlFor="reset-user-password">Nova senha <span>*</span></label>
+        <div className="access-password-wrap"><input id="reset-user-password" name="password" type={showPassword ? "text" : "password"} autoComplete="new-password" required minLength={8} maxLength={128} placeholder="Pelo menos 8 caracteres" disabled={saving} autoFocus /><button type="button" className="icon-button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "Ocultar nova senha" : "Mostrar nova senha"} aria-pressed={showPassword}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>
+        <p className="access-form-note"><ShieldCheck size={17} /> A senha será protegida no servidor. As sessões atuais dessa conta serão encerradas.</p>
+        {formError && <p className="form-error" role="alert">{formError}</p>}
+        <div className="modal-actions"><button type="button" className="button button-secondary" disabled={saving} onClick={() => setPasswordTarget(null)}>Voltar</button><button type="submit" className="button button-primary" disabled={saving}>{saving ? <LoaderCircle size={16} className="spin" /> : <Check size={16} />} Salvar nova senha</button></div>
+      </form>
     </Modal>}
   </section>;
 }

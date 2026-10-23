@@ -4,3 +4,4 @@ export class AccountError extends Error { status: number; constructor(message: s
 export function listUsers(actorId: string, database?: LocalDatabase): ManagedUser[];
 export function createUser(actorId: string, input: Record<string, unknown>, database?: LocalDatabase): Promise<ManagedUser>;
 export function setUserActive(actorId: string, id: unknown, active: unknown, database?: LocalDatabase): ManagedUser;
+export function changeUserPassword(actorId: string, id: unknown, password: unknown, currentSessionHash?: string | null, database?: LocalDatabase): Promise<ManagedUser>;

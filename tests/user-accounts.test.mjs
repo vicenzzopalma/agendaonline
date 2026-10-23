@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LocalDatabase } from "../db/local-sqlite.mjs";
 import { hashPassword, provisionMaster, signIn, getSessionUser, sessionCookie, verifyPassword } from "../lib/auth-store.mjs";
-import { createUser, listUsers, setUserActive } from "../lib/user-accounts.mjs";
+import { changeUserPassword, createUser, listUsers, setUserActive } from "../lib/user-accounts.mjs";
 
 const origin = "https://agenda.example.test";
 const password = "Senha-de-teste-752!";
@@ -90,5 +90,26 @@ test("desativação encerra sessões sem remover reuniões; reativar não recupe
     assert.equal(getSessionUser(cookie, origin, db), null);
     assert.equal((await signIn("pessoa", password, null, db)).ok, true);
     assert.deepEqual(db.connection.prepare("SELECT action FROM user_account_history WHERE user_id=? ORDER BY id").all(user.id).map((row) => row.action), ["created", "deactivated", "activated"]);
+  } finally { db.close(); }
+});
+test("Master altera a senha de qualquer conta, encerra as sessões do usuário e mantém a sessão atual ao alterar a própria", async () => {
+  const { db, master } = fixture();
+  const nextPassword = "Nova-senha-segura-923!";
+  try {
+    const user = await createUser(master, { name: "Pessoa", username: "pessoa", password }, db);
+    const userLogin = await signIn("pessoa", password, null, db);
+    const userCookie = sessionCookie(origin, userLogin.token);
+    const masterLogin = await signIn("arthur.hille", password, null, db);
+    const masterCookie = sessionCookie(origin, masterLogin.token);
+    const masterSessionHash = getSessionUser(masterCookie, origin, db).tokenHash;
+    await changeUserPassword(master, user.id, nextPassword, masterSessionHash, db);
+    assert.equal(getSessionUser(userCookie, origin, db), null);
+    assert.equal((await signIn("pessoa", password, null, db)).status, 401);
+    assert.equal((await signIn("pessoa", nextPassword, null, db)).ok, true);
+    await changeUserPassword(master, master, nextPassword, masterSessionHash, db);
+    assert.ok(getSessionUser(masterCookie, origin, db));
+    assert.equal((await signIn("arthur.hille", nextPassword, null, db)).ok, true);
+    assert.deepEqual(db.connection.prepare("SELECT action FROM user_account_history WHERE user_id=? ORDER BY id").all(user.id).map((row) => row.action), ["created", "password_changed"]);
+    assert.equal(JSON.stringify(db.connection.prepare("SELECT snapshot FROM user_account_history").all()).includes(nextPassword), false);
   } finally { db.close(); }
 });

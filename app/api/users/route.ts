@@ -1,6 +1,6 @@
 import { getAgendaVisitor } from "../../../lib/agenda-visitor";
 import { allowedOrigin } from "../../../lib/runtime";
-import { AccountError, createUser, listUsers, setUserActive } from "../../../lib/user-accounts.mjs";
+import { AccountError, changeUserPassword, createUser, listUsers, setUserActive } from "../../../lib/user-accounts.mjs";
 
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -31,6 +31,7 @@ export async function POST(request: Request) {
     if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "Dados inválidos." }, 400);
     if (body.action === "create") return json({ user: await createUser(user.userId, body) }, 201);
     if (body.action === "setActive") return json({ user: setUserActive(user.userId, body.id, body.active) });
+    if (body.action === "changePassword") return json({ user: await changeUserPassword(user.userId, body.id, body.password, user.tokenHash) });
     return json({ error: "Operação inválida." }, 400);
   } catch (error) { return failure(error); }
 }
